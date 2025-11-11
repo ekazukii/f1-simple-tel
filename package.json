@@ -1,0 +1,15 @@
+{
+  "name": "f1stuff-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "backend:dev": "npm --workspace backend run dev",
+    "backend:build": "npm --workspace backend run build",
+    "frontend:dev": "npm --workspace frontend run dev",
+    "frontend:build": "npm --workspace frontend run build"
+  }
+}

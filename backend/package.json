@@ -1,0 +1,26 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "Formula 1 data aggregation API",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "dev": "ts-node-dev --respawn --transpile-only src/server.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@koa/router": "^14.0.0",
+    "axios": "^1.13.2",
+    "koa": "^3.1.1"
+  },
+  "devDependencies": {
+    "@types/koa": "^3.0.1",
+    "@types/koa__router": "^12.0.5",
+    "@types/node": "^24.10.0",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.9.3"
+  }
+}
