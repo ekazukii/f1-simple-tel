@@ -1,7 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
 import { TelemetryCanvas } from './components/TelemetryCanvas';
-import type { LocationRecord, OpenF1SessionData } from './types';
+import { SessionInsights } from './components/SessionInsights';
+import { DriverCompare } from './components/DriverCompare';
+import type { OpenF1SessionData } from './types';
+import {
+  attachSpeedToLocations,
+  buildDriverPriorityList,
+  buildLapDetails,
+  deriveLapOptions,
+  filterCarDataByDriver,
+  filterLocationsByDriver,
+  findDriverWithLocations,
+  selectRecordsForView
+} from './utils/telemetry';
 
 const SESSION_OPTIONS = [
   { label: 'Latest', value: 'latest', description: 'Most recent session available from the backend cache' }
@@ -15,14 +27,6 @@ const DRIVER_MAX = 99;
 type SessionState = Record<string, OpenF1SessionData>;
 
 type StatusState = { loading: boolean; error: string | null };
-
-interface LapDetail {
-  lap_number: number;
-  start: string;
-  end: string | null;
-}
-
-type CarDataRecord = Record<string, unknown>;
 
 function App() {
   const [selectedSessions, setSelectedSessions] = useState<string[]>(['latest']);
@@ -97,7 +101,7 @@ function App() {
   }, [selectedSessions]);
 
   const lapOptions = useMemo(
-    () => deriveLapOptions(sessions, selectedSessions, preferredDriver),
+    () => deriveLapOptions(sessions, selectedSessions, preferredDriver, DRIVER_MIN, DRIVER_MAX),
     [sessions, selectedSessions, preferredDriver]
   );
 
@@ -230,7 +234,10 @@ function SessionPanel({ sessionKey, data, loading, preferredDriver, selectedLap 
   }
 
   const { sessionInfo } = data;
-  const driverPriorities = useMemo(() => buildDriverPriorityList(preferredDriver), [preferredDriver]);
+  const driverPriorities = useMemo(
+    () => buildDriverPriorityList(preferredDriver, DRIVER_MIN, DRIVER_MAX),
+    [preferredDriver]
+  );
   const activeDriver = useMemo(() => findDriverWithLocations(data.locations ?? [], driverPriorities), [data.locations, driverPriorities]);
   const driverLocations = useMemo(
     () => filterLocationsByDriver(data.locations ?? [], activeDriver),
@@ -292,6 +299,8 @@ function SessionPanel({ sessionKey, data, loading, preferredDriver, selectedLap 
       </header>
 
       <TelemetryCanvas points={displayedLocations} />
+      <DriverCompare session={data} selectedLap={effectiveLapNumber} preferredDriver={preferredDriver} />
+      <SessionInsights session={data} activeDriver={activeDriver} />
     </section>
   );
 }
@@ -317,224 +326,6 @@ function formatDate(value?: string | null) {
   } catch (error) {
     return value;
   }
-}
-
-function deriveLapOptions(
-  sessions: SessionState,
-  selectedSessions: string[],
-  preferredDriver: number | null
-) {
-  for (const key of selectedSessions) {
-    const session = sessions[key];
-    if (!session) {
-      continue;
-    }
-    const priorities = buildDriverPriorityList(preferredDriver);
-    const activeDriver = findDriverWithLocations(session.locations ?? [], priorities);
-    const lapDetails = buildLapDetails(
-      session.laps ?? [],
-      activeDriver,
-      session.sessionInfo?.date_start,
-      session.sessionInfo?.date_end
-    );
-    if (lapDetails.length) {
-      return lapDetails.map((lap) => lap.lap_number);
-    }
-  }
-  return [];
-}
-
-function buildDriverPriorityList(preferredDriver: number | null) {
-  const priorities: number[] = [];
-  const seen = new Set<number>();
-
-  const normalized = normalizeDriverNumber(preferredDriver);
-  if (normalized && normalized >= DRIVER_MIN && normalized <= DRIVER_MAX) {
-    priorities.push(normalized);
-    seen.add(normalized);
-  }
-
-  for (let driver = DRIVER_MIN; driver <= DRIVER_MAX; driver += 1) {
-    if (!seen.has(driver)) {
-      priorities.push(driver);
-      seen.add(driver);
-    }
-  }
-
-  return priorities;
-}
-
-function normalizeDriverNumber(value: unknown) {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return value;
-  }
-
-  if (typeof value === 'string') {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) {
-      return parsed;
-    }
-  }
-
-  return null;
-}
-
-function findDriverWithLocations(locations: LocationRecord[], priorities: number[]) {
-  const driversWithData = new Set<number>();
-  locations.forEach((record) => {
-    const driver = normalizeDriverNumber(record.driver_number);
-    if (driver != null) {
-      driversWithData.add(driver);
-    }
-  });
-
-  for (const driver of priorities) {
-    if (driversWithData.has(driver)) {
-      return driver;
-    }
-  }
-
-  return priorities[0] ?? null;
-}
-
-function filterLocationsByDriver(locations: LocationRecord[], driver: number | null) {
-  if (!driver) {
-    return [];
-  }
-
-  return locations.filter((record) => normalizeDriverNumber(record.driver_number) === driver);
-}
-
-function filterCarDataByDriver(carData: CarDataRecord[], driver: number | null) {
-  if (!driver) {
-    return [];
-  }
-
-  return carData.filter((record) => normalizeDriverNumber(record.driver_number) === driver);
-}
-
-function buildLapDetails(
-  laps: Record<string, unknown>[],
-  driver: number | null,
-  sessionStart?: string,
-  sessionEnd?: string
-): LapDetail[] {
-  if (!driver || !laps.length) {
-    return [];
-  }
-
-  const sorted = laps
-    .map((lap) => ({
-      lap_number: Number(lap.lap_number),
-      driver_number: normalizeDriverNumber(lap.driver_number),
-      start: typeof lap.date_start === 'string' ? lap.date_start : null,
-      duration: typeof lap.lap_duration === 'number' ? lap.lap_duration : null
-    }))
-    .filter((lap) => lap.driver_number === driver && Number.isFinite(lap.lap_number))
-    .sort((a, b) => (a.lap_number as number) - (b.lap_number as number));
-
-  if (!sorted.length) {
-    return [];
-  }
-
-  const fallbackStartMs = parseTime(sessionStart);
-  const fallbackEndMs = parseTime(sessionEnd);
-  const result: LapDetail[] = [];
-  let previousEndMs = fallbackStartMs;
-
-  sorted.forEach((lap, index) => {
-    const startMs = parseTime(lap.start) ?? previousEndMs;
-    if (startMs == null) {
-      return;
-    }
-
-    const nextStartMs = parseTime(sorted[index + 1]?.start);
-    let endMs = nextStartMs;
-
-    if (endMs == null && typeof lap.duration === 'number' && Number.isFinite(lap.duration)) {
-      endMs = startMs + lap.duration * 1000;
-    }
-
-    if (endMs == null) {
-      endMs = fallbackEndMs;
-    }
-
-    result.push({
-      lap_number: lap.lap_number as number,
-      start: new Date(startMs).toISOString(),
-      end: endMs ? new Date(endMs).toISOString() : null
-    });
-
-    previousEndMs = endMs ?? startMs;
-  });
-
-  return result;
-}
-
-function selectRecordsForView<T extends Record<string, unknown>>(records: T[], lapRange: LapDetail | null, limit: number) {
-  if (!lapRange) {
-    return records.slice(0, limit);
-  }
-
-  const startMs = parseTime(lapRange.start) ?? Number.NEGATIVE_INFINITY;
-  const endMs = lapRange.end ? parseTime(lapRange.end) ?? Number.POSITIVE_INFINITY : Number.POSITIVE_INFINITY;
-
-  return records.filter((record) => {
-    const timestamp = getRecordTimestamp(record);
-    return timestamp != null && timestamp >= startMs && timestamp < endMs;
-  });
-}
-
-function attachSpeedToLocations(locations: LocationRecord[], carData: CarDataRecord[]) {
-  if (!carData.length) {
-    return locations.map((record) => ({ ...record }));
-  }
-
-  return locations.map((record, index) => {
-    const speed = extractSpeed(carData[index]);
-    return speed == null ? { ...record } : { ...record, speed };
-  });
-}
-
-function extractSpeed(record?: CarDataRecord) {
-  if (!record) {
-    return undefined;
-  }
-
-  const raw = record.speed as unknown;
-  if (typeof raw === 'number' && Number.isFinite(raw)) {
-    return raw;
-  }
-  if (typeof raw === 'string') {
-    const numeric = Number(raw);
-    if (Number.isFinite(numeric)) {
-      return numeric;
-    }
-  }
-  return undefined;
-}
-
-function getRecordTimestamp(record: Record<string, unknown>) {
-  const raw =
-    (typeof record.date === 'string' && record.date) ||
-    (typeof record.timestamp === 'string' && record.timestamp) ||
-    (typeof record.time === 'string' && record.time);
-
-  if (!raw) {
-    return null;
-  }
-
-  const ms = Date.parse(raw);
-  return Number.isFinite(ms) ? ms : null;
-}
-
-function parseTime(value?: string | null) {
-  if (!value) {
-    return null;
-  }
-
-  const ms = Date.parse(value);
-  return Number.isFinite(ms) ? ms : null;
 }
 
 export default App;
