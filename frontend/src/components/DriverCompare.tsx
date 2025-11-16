@@ -7,6 +7,7 @@ import {
   selectRecordsForView,
   type LapDetail
 } from '../utils/telemetry';
+import { getDriverByNumber, getDriverByNumberOnDate } from '../utils/drivers';
 
 interface Props {
   session: OpenF1SessionData;
@@ -64,6 +65,7 @@ export function DriverCompare({ session, selectedLap, preferredDriver }: Props) 
   const defaultB = Array.from(drivers).find((d) => d !== defaultA) ?? defaultA;
   const [driverA, setDriverA] = useState<number | null>(defaultA ?? null);
   const [driverB, setDriverB] = useState<number | null>(defaultB ?? null);
+  const sessionDate = session.sessionInfo?.date_start ?? session.sessionInfo?.date_end ?? new Date().toISOString();
 
   const lapRangeA = useMemo(() => pickLapRange(session, driverA, selectedLap), [session, driverA, selectedLap]);
   const lapRangeB = useMemo(() => pickLapRange(session, driverB, selectedLap), [session, driverB, selectedLap]);
@@ -96,6 +98,14 @@ export function DriverCompare({ session, selectedLap, preferredDriver }: Props) 
 
   const lapLabel = selectedLap ?? lapRangeA?.lap ?? lapRangeB?.lap ?? 'n/a';
 
+  const formatDriverLabel = (driver: number) => {
+    const info = getDriverByNumberOnDate(driver, sessionDate) ?? getDriverByNumber(driver);
+    if (!info) {
+      return `#${driver}`;
+    }
+    return `#${driver} · ${info.firstName} ${info.lastName} (${info.nationality})`;
+  };
+
   return (
     <section className="compare-panel">
       <div className="compare-head">
@@ -109,7 +119,7 @@ export function DriverCompare({ session, selectedLap, preferredDriver }: Props) 
             <select value={driverA ?? ''} onChange={(e) => setDriverA(toNumberOrNull(e.target.value))}>
               {Array.from(drivers).map((driver) => (
                 <option key={`A-${driver}`} value={driver}>
-                  #{driver}
+                  {formatDriverLabel(driver)}
                 </option>
               ))}
             </select>
@@ -119,7 +129,7 @@ export function DriverCompare({ session, selectedLap, preferredDriver }: Props) 
             <select value={driverB ?? ''} onChange={(e) => setDriverB(toNumberOrNull(e.target.value))}>
               {Array.from(drivers).map((driver) => (
                 <option key={`B-${driver}`} value={driver}>
-                  #{driver}
+                  {formatDriverLabel(driver)}
                 </option>
               ))}
             </select>

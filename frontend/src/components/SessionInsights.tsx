@@ -25,8 +25,11 @@ const COMPOUND_COLORS: Record<string, string> = {
   MEDIUM: '#f6c343',
   HARD: '#f9f9f9',
   INTERMEDIATE: '#4cd37b',
-  WET: '#57a7ff'
+  WET: '#57a7ff',
+  UNKNOWN: '#8a90a6'
 };
+
+const loggedUnknownCompounds = new Set<string>();
 
 export function SessionInsights({ session, activeDriver }: Props) {
   const lapSamples = useMemo(() => buildLapSamples(session.laps ?? []), [session.laps]);
@@ -250,7 +253,19 @@ function formatSeconds(seconds: number) {
 }
 
 function getCompoundColor(compound: string) {
-  return COMPOUND_COLORS[compound] ?? '#8a90a6';
+  const normalized = compound === 'UNKOWN' ? 'UNKNOWN' : compound;
+  const color = COMPOUND_COLORS[normalized];
+  if (color) {
+    return color;
+  }
+
+  if (!loggedUnknownCompounds.has(normalized)) {
+    loggedUnknownCompounds.add(normalized);
+    // Temporary quick fix to surface unexpected compound values
+    console.warn('Unknown tyre compound in stint timeline', compound);
+  }
+
+  return '#8a90a6';
 }
 
 function LapSparkline({ points, maxLap, height = 120 }: { points: LapSample[]; maxLap: number; height?: number }) {

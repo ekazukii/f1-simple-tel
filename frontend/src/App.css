@@ -47,7 +47,81 @@ main.app {
 .control-stack {
   display: flex;
   gap: 1.5rem;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+}
+
+.control-stack > div {
+  flex: 1 1 0;
+}
+
+.driver-select-container {
+  width: 100%;
+}
+
+.driver-select__control {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid #2e3560;
+  box-shadow: none;
+  min-height: 42px;
+  color: inherit;
+  border-radius: 12px;
+}
+
+.driver-select__control--is-focused {
+  border-color: #4563ff;
+  box-shadow: 0 0 0 2px rgba(69, 99, 255, 0.2);
+}
+
+.driver-select__value-container {
+  padding: 4px 10px;
+}
+
+.driver-select__single-value {
+  color: inherit;
+}
+
+.driver-select__input-container,
+.driver-select__placeholder {
+  color: #9ea7c8;
+}
+
+.driver-select__menu {
+  background: rgba(8, 11, 25, 0.95);
+  border: 1px solid #2e3560;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+  color: #e7eaf4;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.driver-select__option {
+  background: transparent;
+  color: #e7eaf4;
+  cursor: pointer;
+  padding: 10px 12px;
+}
+
+.driver-select__option--is-focused {
+  background: #182040;
+}
+
+.driver-select__option--is-selected {
+  background: #4563ff;
+  color: #fff;
+}
+
+.driver-select__indicator-separator {
+  background: #1d2033;
+}
+
+.driver-select__dropdown-indicator,
+.driver-select__clear-indicator {
+  color: #9ea7c8;
+}
+
+.driver-select__dropdown-indicator:hover,
+.driver-select__clear-indicator:hover {
+  color: #ffffff;
 }
 
 .session-picker {

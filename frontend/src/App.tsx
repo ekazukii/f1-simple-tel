@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import Select, { type SingleValue, type StylesConfig } from 'react-select';
 import './App.css';
 import { TelemetryCanvas } from './components/TelemetryCanvas';
 import { SessionInsights } from './components/SessionInsights';
@@ -12,8 +13,10 @@ import {
   filterCarDataByDriver,
   filterLocationsByDriver,
   findDriverWithLocations,
+  normalizeDriverNumber,
   selectRecordsForView
 } from './utils/telemetry';
+import { getDriverHistory } from './utils/drivers';
 
 const SESSION_OPTIONS = [
   { label: 'Latest', value: 'latest', description: 'Most recent session available from the backend cache' }
@@ -23,6 +26,11 @@ const BACKEND_BASE_URL = (import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:
 const MAX_DRIVER_POINTS = 1000;
 const DRIVER_MIN = 1;
 const DRIVER_MAX = 99;
+
+interface DriverOption {
+  value: number;
+  label: string;
+}
 
 type SessionState = Record<string, OpenF1SessionData>;
 
@@ -36,6 +44,96 @@ function App() {
   const [selectedLap, setSelectedLap] = useState<number | null>(null);
   const pendingSignature = useRef<string | null>(null);
   const completedSignature = useRef<string | null>(null);
+
+  const driverOptions = useMemo<DriverOption[]>(() => {
+    const sessionDrivers = new Set<number>();
+    selectedSessions.forEach((key) => {
+      const session = sessions[key];
+      if (!session) return;
+      [...(session.carData ?? []), ...(session.laps ?? []), ...(session.stints ?? [])].forEach((record) => {
+        const driver = normalizeDriverNumber((record as Record<string, unknown>).driver_number);
+        if (driver != null) sessionDrivers.add(driver);
+      });
+    });
+
+    const latestByNumber = new Map<number, { number: number; label: string; startYear: number }>();
+    const history = getDriverHistory();
+
+    history.forEach((entry) => {
+      if (sessionDrivers.size && !sessionDrivers.has(entry.number)) {
+        return;
+      }
+
+      const existing = latestByNumber.get(entry.number);
+      if (!existing || entry.startYear > existing.startYear) {
+        latestByNumber.set(entry.number, {
+          number: entry.number,
+          label: `#${entry.number} — ${entry.firstName} ${entry.lastName}`,
+          startYear: entry.startYear
+        });
+      }
+    });
+
+    if (sessionDrivers.size) {
+      sessionDrivers.forEach((driver) => {
+        if (!latestByNumber.has(driver)) {
+          latestByNumber.set(driver, {
+            number: driver,
+            label: `#${driver}`,
+            startYear: 0
+          });
+        }
+      });
+    }
+
+    return Array.from(latestByNumber.values())
+      .sort((a, b) => a.number - b.number)
+      .map(({ number, label }) => ({ value: number, label }));
+  }, [sessions, selectedSessions]);
+
+  const driverSelectStyles = useMemo<StylesConfig<DriverOption, false>>(
+    () => ({
+      control: (base, state) => ({
+        ...base,
+        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+        borderColor: state.isFocused ? '#4563ff' : '#2e3560',
+        boxShadow: state.isFocused ? '0 0 0 2px rgba(69, 99, 255, 0.2)' : 'none',
+        minHeight: 42,
+        color: '#e7eaf4',
+        borderRadius: 12
+      }),
+      menu: (base) => ({
+        ...base,
+        backgroundColor: 'rgba(8, 11, 25, 0.95)',
+        border: '1px solid #2e3560',
+        boxShadow: '0 12px 30px rgba(0, 0, 0, 0.35)',
+        color: '#e7eaf4',
+        marginTop: 4,
+        borderRadius: 12,
+        overflow: 'hidden'
+      }),
+      option: (base, state) => ({
+        ...base,
+        backgroundColor: state.isSelected ? '#4563ff' : state.isFocused ? '#182040' : 'transparent',
+        color: state.isSelected ? '#fff' : '#e7eaf4',
+        cursor: 'pointer'
+      }),
+      singleValue: (base) => ({ ...base, color: '#e7eaf4' }),
+      input: (base) => ({ ...base, color: '#e7eaf4' }),
+      placeholder: (base) => ({ ...base, color: '#9ea7c8' }),
+      dropdownIndicator: (base, state) => ({
+        ...base,
+        color: state.isFocused ? '#ffffff' : '#9ea7c8'
+      }),
+      clearIndicator: (base, state) => ({
+        ...base,
+        color: state.isFocused ? '#ffffff' : '#9ea7c8'
+      }),
+      indicatorSeparator: (base) => ({ ...base, backgroundColor: '#1d2033' }),
+      valueContainer: (base) => ({ ...base, padding: '4px 10px' })
+    }),
+    []
+  );
 
   useEffect(() => {
     let isCancelled = false;
@@ -121,25 +219,13 @@ function App() {
     setSelectedSessions(values);
   };
 
-  const handleDriverChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const value = event.target.value;
-    if (value === '') {
-      setPreferredDriver(null);
-      return;
-    }
-
-    const numeric = Number(value);
-    if (!Number.isFinite(numeric)) {
-      return;
-    }
-
-    const clamped = Math.max(DRIVER_MIN, Math.min(DRIVER_MAX, Math.round(numeric)));
-    setPreferredDriver(clamped);
-  };
-
   const handleLapChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     const value = event.target.value;
     setSelectedLap(value === '' ? null : Number(value));
+  };
+
+  const handleDriverSelect = (option: SingleValue<DriverOption>) => {
+    setPreferredDriver(option ? option.value : null);
   };
 
   const renderedSessions = useMemo(
@@ -181,15 +267,19 @@ function App() {
           </div>
           <div className="driver-picker">
             <label htmlFor="driver-input">Driver number</label>
-            <input
-              id="driver-input"
-              type="number"
-              min={DRIVER_MIN}
-              max={DRIVER_MAX}
-              value={preferredDriver ?? ''}
-              onChange={handleDriverChange}
+            <Select
+              inputId="driver-input"
+              classNamePrefix="driver-select"
+              className="driver-select-container"
+              options={driverOptions}
+              isClearable
+              placeholder="Search driver by number or name"
+              value={driverOptions.find((opt) => opt.value === preferredDriver) ?? null}
+              onChange={handleDriverSelect}
+              menuPlacement="auto"
+              styles={driverSelectStyles}
             />
-            <small>Prefer this driver’s telemetry. Falls back automatically.</small>
+            <small>Prefer this driver’s telemetry. Type to search or pick from the list.</small>
           </div>
           <div className="lap-picker">
             <label htmlFor="lap-select">Lap</label>
