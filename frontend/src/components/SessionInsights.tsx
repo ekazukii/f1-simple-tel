@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import type { OpenF1SessionData } from '../types';
 import { normalizeDriverNumber } from '../utils/telemetry';
+import { getDriverByNumber, getDriverByNumberOnDate } from '../utils/drivers';
 
 interface Props {
   session: OpenF1SessionData;
@@ -32,11 +33,15 @@ const COMPOUND_COLORS: Record<string, string> = {
 const loggedUnknownCompounds = new Set<string>();
 
 export function SessionInsights({ session, activeDriver }: Props) {
+  const sessionDate = session.sessionInfo?.date_start ?? session.sessionInfo?.date_end ?? new Date().toISOString();
   const lapSamples = useMemo(() => buildLapSamples(session.laps ?? []), [session.laps]);
   const maxLap = useMemo(() => computeMaxLap(lapSamples, session.stints ?? []), [lapSamples, session.stints]);
   const fastestLap = useMemo(() => pickFastestLap(lapSamples), [lapSamples]);
   const pitLeaderboard = useMemo(() => buildPitLeaderboard(session.pitStops ?? []), [session.pitStops]);
-  const stintTimeline = useMemo(() => buildStintTimeline(session.stints ?? [], maxLap || 1), [session.stints, maxLap]);
+  const stintTimeline = useMemo(
+    () => buildStintTimeline(session.stints ?? [], maxLap || 1, sessionDate),
+    [session.stints, maxLap, sessionDate]
+  );
   const activeLapSeries = useMemo(
     () => lapSamples.filter((lap) => (activeDriver ? lap.driver === activeDriver : true)),
     [lapSamples, activeDriver]
@@ -71,7 +76,7 @@ export function SessionInsights({ session, activeDriver }: Props) {
           <ul className="headline-list">
             <li>
               <strong>{fastestLap ? formatSeconds(fastestLap.duration) : '—'}</strong> fastest lap
-              {fastestLap ? ` (#${fastestLap.driver} lap ${fastestLap.lap})` : ''}
+              {fastestLap ? ` (${formatDriver(fastestLap.driver, sessionDate)} lap ${fastestLap.lap})` : ''}
             </li>
             <li>
               <strong>{maxLap || '—'}</strong> laps recorded · <strong>{driverCount || '—'}</strong> drivers with data
@@ -82,16 +87,16 @@ export function SessionInsights({ session, activeDriver }: Props) {
           </ul>
         </div>
 
-        <div className="insights-card">
-          <div className="insights-card-head">
-            <div>
-              <h4>Lap pace</h4>
-              <p className="muted">{activeDriver ? `Driver #${activeDriver}` : 'All drivers'}</p>
+          <div className="insights-card">
+            <div className="insights-card-head">
+              <div>
+                <h4>Lap pace</h4>
+                <p className="muted">{activeDriver ? formatDriver(activeDriver, sessionDate) : 'All drivers'}</p>
+              </div>
+              {activeLapStats.fastest && <span className="pill">Best {formatSeconds(activeLapStats.fastest.duration)}</span>}
             </div>
-            {activeLapStats.fastest && <span className="pill">Best {formatSeconds(activeLapStats.fastest.duration)}</span>}
-          </div>
-          <LapSparkline points={activeLapSeries} maxLap={maxLap || 1} />
-          <p className="muted small">
+            <LapSparkline points={activeLapSeries} maxLap={maxLap || 1} />
+            <p className="muted small">
             Showing lap times where timing data exists. {activeLapStats.count} laps · average {activeLapStats.averageText}.
           </p>
         </div>
@@ -105,7 +110,7 @@ export function SessionInsights({ session, activeDriver }: Props) {
             <ol className="pit-list">
               {pitLeaderboard.items.map((pit) => (
                 <li key={`${pit.driver}-${pit.lap}`}>
-                  <span className="pit-driver">#{pit.driver}</span>
+                  <span className="pit-driver">{formatDriver(pit.driver, sessionDate)}</span>
                   <span className="pit-duration">{pit.duration.toFixed(1)}s</span>
                   <span className="pit-lap">Lap {pit.lap}</span>
                 </li>
@@ -194,9 +199,10 @@ function buildPitLeaderboard(pitStops: Record<string, unknown>[]) {
 interface TimelineRow {
   driver: number;
   stints: StintSegment[];
+  sessionDate: string;
 }
 
-function buildStintTimeline(stints: Record<string, unknown>[], maxLap: number): TimelineRow[] {
+function buildStintTimeline(stints: Record<string, unknown>[], maxLap: number, sessionDate: string): TimelineRow[] {
   if (!stints.length) {
     return [];
   }
@@ -225,7 +231,8 @@ function buildStintTimeline(stints: Record<string, unknown>[], maxLap: number): 
     .sort(([a], [b]) => a - b)
     .map(([driver, segments]) => ({
       driver,
-      stints: segments.sort((a, b) => a.start - b.start)
+      stints: segments.sort((a, b) => a.start - b.start),
+      sessionDate
     }));
 }
 
@@ -328,18 +335,22 @@ function StintTimeline({ rows, maxLap }: { rows: TimelineRow[]; maxLap: number }
     <div className="stint-timeline">
       {rows.map((row) => (
         <div key={row.driver} className="stint-row">
-          <div className="stint-driver">#{row.driver}</div>
+          <div className="stint-driver" title={formatDriver(row.driver, row.sessionDate)}>
+            <span className="stint-driver-number">#{row.driver}</span>
+            <span className="stint-driver-name">{formatDriverName(row.driver, row.sessionDate)}</span>
+          </div>
           <div className="stint-bar-track" aria-label={`Stints for driver ${row.driver}`}>
             {row.stints.map((stint, index) => {
               const startPct = ((stint.start - 1) / safeMaxLap) * 100;
               const widthPct = ((stint.end - stint.start + 1) / safeMaxLap) * 100;
               const color = getCompoundColor(stint.compound);
+              const driverLabel = formatDriver(stint.driver, row.sessionDate);
               return (
                 <div
                   key={`${stint.driver}-${stint.start}-${index}`}
                   className="stint-segment"
                   style={{ left: `${startPct}%`, width: `${widthPct}%`, backgroundColor: color, borderColor: color }}
-                  title={`Driver #${stint.driver} \u00b7 ${stint.compound} · laps ${stint.start}-${stint.end}`}
+                  title={`${driverLabel} \u00b7 ${stint.compound} · laps ${stint.start}-${stint.end}`}
                 />
               );
             })}
@@ -352,4 +363,20 @@ function StintTimeline({ rows, maxLap }: { rows: TimelineRow[]; maxLap: number }
       </div>
     </div>
   );
+}
+
+function formatDriver(driver: number, sessionDate: string) {
+  const info = getDriverByNumberOnDate(driver, sessionDate) ?? getDriverByNumber(driver);
+  if (!info) {
+    return `#${driver}`;
+  }
+  return `#${driver} · ${info.firstName} ${info.lastName}`;
+}
+
+function formatDriverName(driver: number, sessionDate: string) {
+  const info = getDriverByNumberOnDate(driver, sessionDate) ?? getDriverByNumber(driver);
+  if (!info) {
+    return '';
+  }
+  return `${info.firstName} ${info.lastName}`;
 }
