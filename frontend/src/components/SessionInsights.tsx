@@ -21,6 +21,12 @@ interface StintSegment {
   driver: number;
 }
 
+interface LapCompoundPoint {
+  lap: number;
+  duration: number;
+  compound: string;
+}
+
 const COMPOUND_COLORS: Record<string, string> = {
   SOFT: '#ff4d4d',
   MEDIUM: '#f6c343',
@@ -42,6 +48,10 @@ export function SessionInsights({ session, activeDriver }: Props) {
     () => buildStintTimeline(session.stints ?? [], maxLap || 1, sessionDate),
     [session.stints, maxLap, sessionDate]
   );
+  const lapCompoundSeries = useMemo(() => {
+    const driver = activeDriver ?? lapSamples[0]?.driver ?? null;
+    return buildLapCompoundSeries(session.laps ?? [], session.stints ?? [], driver);
+  }, [session.laps, session.stints, activeDriver, lapSamples]);
   const activeLapSeries = useMemo(
     () => lapSamples.filter((lap) => (activeDriver ? lap.driver === activeDriver : true)),
     [lapSamples, activeDriver]
@@ -87,20 +97,6 @@ export function SessionInsights({ session, activeDriver }: Props) {
           </ul>
         </div>
 
-          <div className="insights-card">
-            <div className="insights-card-head">
-              <div>
-                <h4>Lap pace</h4>
-                <p className="muted">{activeDriver ? formatDriver(activeDriver, sessionDate) : 'All drivers'}</p>
-              </div>
-              {activeLapStats.fastest && <span className="pill">Best {formatSeconds(activeLapStats.fastest.duration)}</span>}
-            </div>
-            <LapSparkline points={activeLapSeries} maxLap={maxLap || 1} />
-            <p className="muted small">
-            Showing lap times where timing data exists. {activeLapStats.count} laps · average {activeLapStats.averageText}.
-          </p>
-        </div>
-
         <div className="insights-card">
           <div className="insights-card-head">
             <h4>Pit lane leaderboard</h4>
@@ -118,6 +114,20 @@ export function SessionInsights({ session, activeDriver }: Props) {
             </ol>
           ) : (
             <p className="muted">No pit data available.</p>
+          )}
+        </div>
+
+        <div className="insights-card full-span">
+          <div className="insights-card-head">
+            <div>
+              <h4>Lap pace & tyre fade</h4>
+              <p className="muted">Lap time per lap with stint compound bands</p>
+            </div>
+          </div>
+          {lapCompoundSeries.length ? (
+            <LapDegradationChart points={lapCompoundSeries} maxLap={maxLap || lapCompoundSeries.at(-1)?.lap || 1} />
+          ) : (
+            <p className="muted">No lap data available for this driver.</p>
           )}
         </div>
 
@@ -194,6 +204,43 @@ function buildPitLeaderboard(pitStops: Record<string, unknown>[]) {
     totalPits: pits.length,
     quickestText: pits.length ? `${pits[0].duration.toFixed(1)}s (#${pits[0].driver})` : '—'
   };
+}
+
+function buildLapCompoundSeries(
+  laps: Record<string, unknown>[],
+  stints: Record<string, unknown>[],
+  driver: number | null
+): LapCompoundPoint[] {
+  if (!driver || !laps.length || !stints.length) {
+    return [];
+  }
+
+  const stintLookup = new Map<number, string>();
+  stints.forEach((stint) => {
+    const stintDriver = normalizeDriverNumber(stint.driver_number);
+    if (stintDriver !== driver) return;
+    const start = Number(stint.lap_start) || Number(stint.lap_number);
+    const end = Number(stint.lap_end) || start;
+    const compound = typeof stint.compound === 'string' ? stint.compound.toUpperCase() : 'UNKNOWN';
+    if (!Number.isFinite(start) || !Number.isFinite(end)) return;
+    for (let lap = Math.max(1, start); lap <= Math.max(start, end); lap += 1) {
+      stintLookup.set(lap, compound);
+    }
+  });
+
+  return laps
+    .map((lap) => ({
+      driver: normalizeDriverNumber(lap.driver_number),
+      lap: Number(lap.lap_number),
+      duration: Number(lap.lap_duration)
+    }))
+    .filter((lap) => lap.driver === driver && Number.isFinite(lap.lap) && lap.lap > 0 && Number.isFinite(lap.duration) && lap.duration > 0)
+    .sort((a, b) => a.lap - b.lap)
+    .map((lap) => ({
+      lap: lap.lap,
+      duration: lap.duration,
+      compound: stintLookup.get(lap.lap) ?? 'UNKNOWN'
+    }));
 }
 
 interface TimelineRow {
@@ -273,6 +320,88 @@ function getCompoundColor(compound: string) {
   }
 
   return '#8a90a6';
+}
+
+function LapDegradationChart({ points, maxLap }: { points: LapCompoundPoint[]; maxLap: number }) {
+  if (!points.length) {
+    return <p className="muted">No lap data available for this driver.</p>;
+  }
+
+  const width = 920;
+  const height = 220;
+  const padding = 28;
+  const usableWidth = width - padding * 2;
+  const usableHeight = height - padding * 2;
+
+  const sorted = [...points].sort((a, b) => a.lap - b.lap);
+  const durations = sorted.map((lap) => lap.duration).sort((a, b) => a - b);
+  if (!durations.length) {
+    return <p className="muted">No lap data available for this driver.</p>;
+  }
+  const minDuration = durations[0];
+  const maxDuration = durations[durations.length - 1];
+  const mid = Math.floor(durations.length / 2);
+  const median = durations.length % 2 === 0 ? (durations[mid - 1] + durations[mid]) / 2 : durations[mid];
+  const safeMaxLap = Math.max(1, maxLap);
+  const lowerBound = Math.max(0.1, median - 2);
+  const upperBound = Math.max(lowerBound + 0.1, median + 3);
+  const span = upperBound - lowerBound;
+
+  const scaleX = (lap: number) => padding + ((lap - 1) / Math.max(1, safeMaxLap - 1)) * usableWidth;
+
+  const scaleY = (duration: number) => {
+    const clamped = Math.min(Math.max(duration, lowerBound), upperBound);
+    const ratio = (clamped - lowerBound) / span;
+    return padding + (1 - ratio) * usableHeight;
+  };
+
+  const bandHeight = usableHeight;
+  const bandY = padding;
+  const lapWidth = usableWidth / safeMaxLap;
+
+  const path = sorted
+    .map((lap, index) => `${index === 0 ? 'M' : 'L'}${scaleX(lap.lap).toFixed(2)},${scaleY(lap.duration).toFixed(2)}`)
+    .join(' ');
+
+  return (
+    <svg className="degradation-chart" width="100%" height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Lap time degradation chart">
+      {sorted.map((lap) => {
+        const color = getCompoundColor(lap.compound);
+        return (
+          <rect
+            key={`band-${lap.lap}`}
+            x={scaleX(lap.lap) - lapWidth / 2}
+            y={bandY}
+            width={lapWidth}
+            height={bandHeight}
+            fill={color}
+            opacity={0.14}
+          />
+        );
+      })}
+      <path d={path} fill="none" stroke="#f6c343" strokeWidth={2} strokeLinecap="round" />
+      {sorted.map((lap) => (
+        <g key={`pt-${lap.lap}`}>
+          <circle
+            cx={scaleX(lap.lap)}
+            cy={scaleY(lap.duration)}
+            r={3.2}
+            fill="#1b223d"
+            stroke="#f6c343"
+            strokeWidth={1.4}
+          />
+          <title>
+            {`Lap ${lap.lap}: ${lap.duration.toFixed(3)}s · ${lap.compound}`}
+          </title>
+        </g>
+      ))}
+      <g fill="#9ea7c8" fontSize="11">
+        <text x={padding} y={padding - 6}>Lap time (linear, clipped to median -2s / +3s)</text>
+        <text x={width - padding - 60} y={height - 8}>Lap →</text>
+        <text x={padding} y={height - 8}>{`Median: ${median.toFixed(3)}s · Clip: [${(median - 2).toFixed(3)}s, ${(median + 3).toFixed(3)}s] · Actual min/max: ${minDuration.toFixed(3)}s / ${maxDuration.toFixed(3)}s`}</text>
+      </g>
+    </svg>
+  );
 }
 
 function LapSparkline({ points, maxLap, height = 120 }: { points: LapSample[]; maxLap: number; height?: number }) {

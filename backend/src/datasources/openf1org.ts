@@ -40,31 +40,65 @@ export interface OpenF1SessionData {
 
 async function fetchCollection<T extends ApiRecord>(
   endpoint: string,
-  params: Record<string, string | number>
+  params: Record<string, string | number>,
+  maxAttempts = 5
 ): Promise<T[]> {
   const path = `/${endpoint.replace(/^\/+/, "")}`;
   const fullUrl = buildFullUrl(path, params);
   console.log(`[OpenF1] GET ${fullUrl}`);
 
-  try {
-    const response = await client.get<T[]>(path, { params });
-    const status = response.status;
-    const length = Array.isArray(response.data)
-      ? response.data.length
-      : "unknown";
-    console.log(`[OpenF1] GET ${fullUrl} -> ${status} (${length} rows)`);
-    return response.data;
-  } catch (error) {
-    const axiosError = error as AxiosError;
-    const status = axiosError?.response?.status ?? "ERR";
-    const message =
-      axiosError?.message ??
-      (error instanceof Error
-        ? error.message
-        : "Unknown error while contacting openf1.org");
-    console.error(`[OpenF1] GET ${fullUrl} -> ${status} FAILED: ${message}`);
-    throw new Error(`Failed to fetch ${endpoint}: ${message}`);
+  let attempt = 0;
+  let lastError: AxiosError | null = null;
+
+  while (attempt < maxAttempts) {
+    try {
+      const response = await client.get<T[]>(path, { params });
+      const status = response.status;
+      const length = Array.isArray(response.data)
+        ? response.data.length
+        : "unknown";
+      console.log(`[OpenF1] GET ${fullUrl} -> ${status} (${length} rows)`);
+      return response.data;
+    } catch (error) {
+      const axiosError = error as AxiosError;
+      lastError = axiosError;
+      const status = axiosError?.response?.status ?? "ERR";
+      const shouldRetry =
+        status === 429 ||
+        status === 502 ||
+        status === 503 ||
+        status === 504 ||
+        status === "ERR";
+
+      attempt += 1;
+      const message =
+        axiosError?.message ??
+        (error instanceof Error
+          ? error.message
+          : "Unknown error while contacting openf1.org");
+
+      if (!shouldRetry || attempt >= maxAttempts) {
+        console.error(
+          `[OpenF1] GET ${fullUrl} -> ${status} FAILED after ${attempt} attempts: ${message}`
+        );
+        throw new Error(`Failed to fetch ${endpoint}: ${message}`);
+      }
+
+      const backoffBase = 500; // ms
+      const delay = Math.min(8000, backoffBase * 2 ** (attempt - 1));
+      const jitter = Math.random() * 250;
+      console.warn(
+        `[OpenF1] ${status} for ${fullUrl} (attempt ${attempt}/${maxAttempts}), retrying in ${Math.round(
+          delay + jitter
+        )}ms`
+      );
+      await sleep(delay + jitter);
+    }
   }
+
+  throw new Error(
+    `Failed to fetch ${endpoint}: ${lastError?.message ?? "Unknown error"}`
+  );
 }
 
 function buildFullUrl(path: string, params: Record<string, string | number>) {

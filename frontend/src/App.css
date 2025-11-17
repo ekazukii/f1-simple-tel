@@ -48,11 +48,11 @@ main.app {
 .control-stack {
   display: flex;
   gap: 1.5rem;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
 }
 
 .control-stack > div {
-  flex: 1 1 0;
+  flex: 1 1 240px;
 }
 
 .driver-select-container {
@@ -478,7 +478,7 @@ main.app {
 
 .insights-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
   gap: 1rem;
 }
 
@@ -666,4 +666,24 @@ main.app {
   .session-picker select {
     min-height: 100px;
   }
+}
+
+
+.degradation-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+
+.degradation-table th,
+.degradation-table td {
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: left;
+}
+
+.degradation-table th {
+  color: #9ea7c8;
+  font-weight: 600;
+  font-size: 0.85rem;
 }

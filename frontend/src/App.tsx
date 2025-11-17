@@ -17,10 +17,7 @@ import {
   selectRecordsForView
 } from './utils/telemetry';
 import { getDriverHistory } from './utils/drivers';
-
-const SESSION_OPTIONS = [
-  { label: 'Latest', value: 'latest', description: 'Most recent session available from the backend cache' }
-];
+import sessionCatalog from './data/sessionCatalog.json';
 
 const BACKEND_BASE_URL = (import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:4000').replace(/\/$/, '');
 const MAX_DRIVER_POINTS = 1000;
@@ -32,12 +29,30 @@ interface DriverOption {
   label: string;
 }
 
+interface SessionCatalogEntry {
+  meeting_key: number;
+  session_key: number;
+  location: string;
+  date_start: string;
+  date_end: string;
+  session_type: string;
+  session_name: string;
+  country_key: number;
+  country_code: string;
+  country_name: string;
+  circuit_key: number;
+  circuit_short_name: string;
+  gmt_offset: string;
+  year: number;
+}
+
 type SessionState = Record<string, OpenF1SessionData>;
 
 type StatusState = { loading: boolean; error: string | null };
 
 function App() {
-  const [selectedSessions, setSelectedSessions] = useState<string[]>(['latest']);
+  const sessionOptions = useMemo(() => buildSessionOptions(sessionCatalog as SessionCatalogEntry[]), []);
+  const [selectedSessions, setSelectedSessions] = useState<string[]>([]);
   const [sessions, setSessions] = useState<SessionState>({});
   const [status, setStatus] = useState<StatusState>({ loading: false, error: null });
   const [preferredDriver, setPreferredDriver] = useState<number | null>(1);
@@ -136,6 +151,9 @@ function App() {
   );
 
   useEffect(() => {
+    if (!selectedSessions.length && sessionOptions.length) {
+      setSelectedSessions([sessionOptions[0].value]);
+    }
     let isCancelled = false;
     const signature = selectedSessions.join('|');
 
@@ -196,7 +214,7 @@ function App() {
         pendingSignature.current = null;
       }
     };
-  }, [selectedSessions]);
+  }, [selectedSessions, sessionOptions]);
 
   const lapOptions = useMemo(
     () => deriveLapOptions(sessions, selectedSessions, preferredDriver, DRIVER_MIN, DRIVER_MAX),
@@ -257,13 +275,13 @@ function App() {
           <div className="session-picker">
             <label htmlFor="session-select">Choose sessions</label>
             <select id="session-select" multiple value={selectedSessions} onChange={handleSessionChange}>
-              {SESSION_OPTIONS.map((option) => (
+              {sessionOptions.map((option) => (
                 <option value={option.value} key={option.value}>
                   {option.label}
                 </option>
               ))}
             </select>
-            <small>Hold Cmd/Ctrl to select multiple sessions. Currently only “Latest” is available.</small>
+            <small>Hold Cmd/Ctrl to select multiple sessions.</small>
           </div>
           <div className="driver-picker">
             <label htmlFor="driver-input">Driver number</label>
@@ -416,6 +434,20 @@ function formatDate(value?: string | null) {
   } catch (error) {
     return value;
   }
+}
+
+function buildSessionOptions(catalog: SessionCatalogEntry[]) {
+  const currentYear = new Date().getFullYear();
+  return catalog
+    .filter((entry) => {
+      const type = String(entry.session_type || '').toUpperCase();
+      return entry.year === currentYear && (type === 'RACE' || type === 'SPRINT');
+    })
+    .sort((a, b) => new Date(a.date_start).getTime() - new Date(b.date_start).getTime())
+    .map((entry) => ({
+      value: String(entry.session_key),
+      label: `${entry.circuit_short_name} - ${entry.session_name}`
+    }));
 }
 
 export default App;

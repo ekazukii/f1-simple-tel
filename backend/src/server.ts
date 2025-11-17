@@ -2,6 +2,8 @@ import Koa from 'koa';
 import Router from '@koa/router';
 import path from 'path';
 import { promises as fs } from 'fs';
+import { gunzip, gzip } from 'zlib';
+import { promisify } from 'util';
 import { fetchOpenF1Session, OpenF1SessionData } from './datasources/openf1org';
 
 const DEFAULT_PORT = 4000;
@@ -12,6 +14,9 @@ const PORT = Number.isFinite(parsedPort) && parsedPort > 0 ? parsedPort : DEFAUL
 const CACHE_DIR = process.env.SESSION_CACHE_DIR
   ? path.resolve(process.env.SESSION_CACHE_DIR)
   : path.resolve(process.cwd(), 'session-cache');
+
+const gzipAsync = promisify(gzip);
+const gunzipAsync = promisify(gunzip);
 
 const inFlightFetches = new Map<string, Promise<OpenF1SessionData>>();
 
@@ -115,25 +120,39 @@ function sanitizeSessionKey(sessionKey: string) {
 
 function getCacheFilePath(sessionKey: string) {
   const safeKey = sanitizeSessionKey(sessionKey);
-  return path.join(CACHE_DIR, `${safeKey}.json`);
+  return {
+    json: path.join(CACHE_DIR, `${safeKey}.json`),
+    zip: path.join(CACHE_DIR, `${safeKey}.json.zip`),
+  };
 }
 
 async function readSessionFromDisk(sessionKey: string): Promise<OpenF1SessionData | null> {
   const filePath = getCacheFilePath(sessionKey);
 
   try {
-    const raw = await fs.readFile(filePath, 'utf-8');
+    const raw = await fs.readFile(filePath.json, 'utf-8');
     return JSON.parse(raw) as OpenF1SessionData;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      throw new Error(`Failed to read cache for session ${sessionKey}: ${String(error)}`);
+    }
+  }
+
+  try {
+    const compressed = await fs.readFile(filePath.zip);
+    const raw = await gunzipAsync(compressed);
+    return JSON.parse(raw.toString('utf-8')) as OpenF1SessionData;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
       return null;
     }
-
-    throw new Error(`Failed to read cache for session ${sessionKey}: ${String(error)}`);
+    throw new Error(`Failed to read compressed cache for session ${sessionKey}: ${String(error)}`);
   }
 }
 
 async function writeSessionToDisk(sessionKey: string, data: OpenF1SessionData) {
   const filePath = getCacheFilePath(sessionKey);
-  await fs.writeFile(filePath, JSON.stringify(data));
+  const json = JSON.stringify(data);
+  const compressed = await gzipAsync(json);
+  await fs.writeFile(filePath.zip, compressed);
 }

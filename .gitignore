@@ -11,8 +11,7 @@ backend/dist/
 frontend/dist/
 
 # Runtime caches
-backend/session-cache/
-session-cache/
+backend/session-cache/latest.json
 
 # Env/config overrides
 .env
