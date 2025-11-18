@@ -52,11 +52,6 @@ export function SessionInsights({ session, activeDriver }: Props) {
     const driver = activeDriver ?? lapSamples[0]?.driver ?? null;
     return buildLapCompoundSeries(session.laps ?? [], session.stints ?? [], driver);
   }, [session.laps, session.stints, activeDriver, lapSamples]);
-  const activeLapSeries = useMemo(
-    () => lapSamples.filter((lap) => (activeDriver ? lap.driver === activeDriver : true)),
-    [lapSamples, activeDriver]
-  );
-  const activeLapStats = useMemo(() => computeLapStats(activeLapSeries), [activeLapSeries]);
   const driverCount = useMemo(() => {
     const drivers = new Set<number>();
     lapSamples.forEach((lap) => drivers.add(lap.driver));
@@ -125,7 +120,11 @@ export function SessionInsights({ session, activeDriver }: Props) {
             </div>
           </div>
           {lapCompoundSeries.length ? (
-            <LapDegradationChart points={lapCompoundSeries} maxLap={maxLap || lapCompoundSeries.at(-1)?.lap || 1} />
+            (() => {
+              const lastLap = lapCompoundSeries.at(-1)?.lap ?? 1;
+              const maxForChart = maxLap || lastLap || 1;
+              return <LapDegradationChart points={lapCompoundSeries} maxLap={maxForChart} />;
+            })()
           ) : (
             <p className="muted">No lap data available for this driver.</p>
           )}
@@ -189,14 +188,25 @@ function pickFastestLap(laps: LapSample[]) {
   }, null);
 }
 
+interface PitItem {
+  driver: number;
+  duration: number;
+  lap: number;
+}
+
 function buildPitLeaderboard(pitStops: Record<string, unknown>[]) {
-  const pits = pitStops
+  const pits: PitItem[] = pitStops
     .map((pit) => ({
       driver: normalizeDriverNumber(pit.driver_number),
       duration: Number(pit.pit_duration),
       lap: Number(pit.lap_number)
     }))
-    .filter((pit) => pit.driver && Number.isFinite(pit.duration) && pit.duration > 0)
+    .filter((pit): pit is PitItem =>
+      pit.driver != null &&
+      Number.isFinite(pit.duration) &&
+      pit.duration > 0 &&
+      Number.isFinite(pit.lap)
+    )
     .sort((a, b) => a.duration - b.duration);
 
   return {
@@ -281,20 +291,6 @@ function buildStintTimeline(stints: Record<string, unknown>[], maxLap: number, s
       stints: segments.sort((a, b) => a.start - b.start),
       sessionDate
     }));
-}
-
-function computeLapStats(laps: LapSample[]) {
-  if (!laps.length) {
-    return { fastest: null, averageText: '—', count: 0 };
-  }
-
-  const fastest = pickFastestLap(laps);
-  const average = laps.reduce((sum, lap) => sum + lap.duration, 0) / laps.length;
-  return {
-    fastest,
-    averageText: `${average.toFixed(3)}s`,
-    count: laps.length
-  };
 }
 
 function formatSeconds(seconds: number) {
@@ -400,55 +396,6 @@ function LapDegradationChart({ points, maxLap }: { points: LapCompoundPoint[]; m
         <text x={width - padding - 60} y={height - 8}>Lap →</text>
         <text x={padding} y={height - 8}>{`Median: ${median.toFixed(3)}s · Clip: [${(median - 2).toFixed(3)}s, ${(median + 3).toFixed(3)}s] · Actual min/max: ${minDuration.toFixed(3)}s / ${maxDuration.toFixed(3)}s`}</text>
       </g>
-    </svg>
-  );
-}
-
-function LapSparkline({ points, maxLap, height = 120 }: { points: LapSample[]; maxLap: number; height?: number }) {
-  if (!points.length) {
-    return <div className="sparkline empty">No lap times yet.</div>;
-  }
-
-  const sorted = [...points].sort((a, b) => a.lap - b.lap);
-  const minDuration = sorted.reduce((acc, lap) => Math.min(acc, lap.duration), Number.POSITIVE_INFINITY);
-  const maxDuration = sorted.reduce((acc, lap) => Math.max(acc, lap.duration), 0);
-  const viewWidth = 420;
-  const padding = 16;
-  const usableWidth = viewWidth - padding * 2;
-  const usableHeight = height - padding * 2;
-
-  const path = sorted
-    .map((lap, index) => {
-      const xRatio = Math.max(0, Math.min(1, (lap.lap - 1) / Math.max(1, maxLap - 1)));
-      const yRatio = maxDuration === minDuration ? 0.5 : (lap.duration - minDuration) / (maxDuration - minDuration);
-      const x = padding + xRatio * usableWidth;
-      const y = padding + (1 - yRatio) * usableHeight;
-      return `${index === 0 ? 'M' : 'L'}${x.toFixed(2)},${y.toFixed(2)}`;
-    })
-    .join(' ');
-
-  const fastest = pickFastestLap(sorted);
-  const fastestX = fastest
-    ? padding + (Math.max(0, Math.min(1, (fastest.lap - 1) / Math.max(1, maxLap - 1)))) * usableWidth
-    : null;
-  const fastestY = fastest
-    ? padding +
-      (1 - (maxDuration === minDuration ? 0.5 : (fastest.duration - minDuration) / (maxDuration - minDuration))) * usableHeight
-    : null;
-
-  return (
-    <svg className="sparkline" role="img" aria-label="Lap pace sparkline" width="100%" height={height} viewBox={`0 0 ${viewWidth} ${height}`}>
-      <defs>
-        <linearGradient id="paceGradient" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor="#5ddcff" stopOpacity="0.7" />
-          <stop offset="100%" stopColor="#4563ff" stopOpacity="0.1" />
-        </linearGradient>
-      </defs>
-      <path d={`${path} L ${padding + usableWidth},${height - padding} L ${padding},${height - padding} Z`} fill="url(#paceGradient)" opacity="0.35" />
-      <path d={path} fill="none" stroke="#7ad7ff" strokeWidth={2} strokeLinecap="round" />
-      {fastest && fastestX != null && fastestY != null && (
-        <circle cx={fastestX} cy={fastestY} r={5} fill="#f6c343" stroke="#0d101c" strokeWidth={1.5} />
-      )}
     </svg>
   );
 }

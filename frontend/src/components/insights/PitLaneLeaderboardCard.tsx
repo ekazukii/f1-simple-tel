@@ -1,4 +1,4 @@
-import { formatDriver, formatSeconds } from './shared';
+import { formatDriver } from './shared';
 
 interface PitEntry {
   driver: number;
