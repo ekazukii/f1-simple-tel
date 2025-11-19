@@ -6,7 +6,7 @@ COPY package*.json ./
 RUN npm install
 
 COPY . .
-ARG BACKEND_URL=http://localhost:4000
+ARG BACKEND_URL=https://back-f1.ekazuki.fr
 ENV VITE_BACKEND_URL=${BACKEND_URL}
 RUN npm run build
 
