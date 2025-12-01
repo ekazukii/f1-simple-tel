@@ -6,13 +6,11 @@ import { SessionInsights } from './components/SessionInsights';
 import { DriverCompare } from './components/DriverCompare';
 import type { OpenF1SessionData } from './types';
 import {
-  attachSpeedToLocations,
   buildDriverPriorityList,
   buildLapDetails,
   deriveLapOptions,
-  filterCarDataByDriver,
-  filterLocationsByDriver,
-  findDriverWithLocations,
+  filterTelemetryByDriver,
+  findDriverWithTelemetry,
   normalizeDriverNumber,
   selectRecordsForView
 } from './utils/telemetry';
@@ -65,7 +63,7 @@ function App() {
     selectedSessions.forEach((key) => {
       const session = sessions[key];
       if (!session) return;
-      [...(session.carData ?? []), ...(session.laps ?? []), ...(session.stints ?? [])].forEach((record) => {
+      [...(session.telemetry ?? []), ...(session.laps ?? []), ...(session.stints ?? [])].forEach((record) => {
         const driver = normalizeDriverNumber((record as Record<string, unknown>).driver_number);
         if (driver != null) sessionDrivers.add(driver);
       });
@@ -346,14 +344,13 @@ function SessionPanel({ sessionKey, data, loading, preferredDriver, selectedLap 
     () => buildDriverPriorityList(preferredDriver, DRIVER_MIN, DRIVER_MAX),
     [preferredDriver]
   );
-  const activeDriver = useMemo(() => findDriverWithLocations(data.locations ?? [], driverPriorities), [data.locations, driverPriorities]);
-  const driverLocations = useMemo(
-    () => filterLocationsByDriver(data.locations ?? [], activeDriver),
-    [data.locations, activeDriver]
+  const activeDriver = useMemo(
+    () => findDriverWithTelemetry(data.telemetry ?? [], driverPriorities),
+    [data.telemetry, driverPriorities]
   );
-  const driverCarData = useMemo(
-    () => filterCarDataByDriver(data.carData ?? [], activeDriver),
-    [data.carData, activeDriver]
+  const driverTelemetry = useMemo(
+    () => filterTelemetryByDriver(data.telemetry ?? [], activeDriver),
+    [data.telemetry, activeDriver]
   );
   const lapDetails = useMemo(
     () => buildLapDetails(data.laps ?? [], activeDriver, sessionInfo?.date_start, sessionInfo?.date_end),
@@ -373,16 +370,25 @@ function SessionPanel({ sessionKey, data, loading, preferredDriver, selectedLap 
     [lapDetails, effectiveLapNumber]
   );
 
-  const displayedLocations = useMemo(() => {
-    if (!driverLocations.length) {
+  const displayedTelemetry = useMemo(() => {
+    if (!driverTelemetry.length) {
       return [];
     }
 
-    const filteredLocations = selectRecordsForView(driverLocations, lapRange, MAX_DRIVER_POINTS);
-    const filteredCarData = selectRecordsForView(driverCarData, lapRange, MAX_DRIVER_POINTS);
-
-    return attachSpeedToLocations(filteredLocations, filteredCarData);
-  }, [driverLocations, driverCarData, lapRange]);
+    const slice = selectRecordsForView(driverTelemetry, lapRange, MAX_DRIVER_POINTS);
+    if (slice.length) {
+      const first = slice[0];
+      const last = slice[slice.length - 1];
+      const middle = slice[Math.floor(slice.length / 2)];
+      // eslint-disable-next-line no-console
+      console.log('[Telemetry]', sessionKey, 'driver', activeDriver, {
+        first,
+        middle,
+        last
+      });
+    }
+    return slice;
+  }, [driverTelemetry, lapRange, sessionKey, activeDriver]);
 
   const startDate = formatDate(sessionInfo?.date_start);
   const endDate = formatDate(sessionInfo?.date_end);
@@ -406,7 +412,7 @@ function SessionPanel({ sessionKey, data, loading, preferredDriver, selectedLap 
         )}
       </header>
 
-      <TelemetryCanvas points={displayedLocations} />
+      <TelemetryCanvas points={displayedTelemetry} />
       <DriverCompare session={data} selectedLap={effectiveLapNumber} preferredDriver={preferredDriver} />
       <SessionInsights session={data} activeDriver={activeDriver} />
     </section>

@@ -1,4 +1,4 @@
-import type { LocationRecord, OpenF1SessionData } from '../types';
+import type { OpenF1SessionData, TelemetrySample } from '../types';
 
 export interface LapDetail {
   lap_number: number;
@@ -6,7 +6,6 @@ export interface LapDetail {
   end: string | null;
 }
 
-export type CarDataRecord = Record<string, unknown>;
 export interface TyreUsageMatrix {
   drivers: number[];
   lapNumbers: number[];
@@ -27,7 +26,7 @@ export function deriveLapOptions(
     }
 
     const priorities = buildDriverPriorityList(preferredDriver, driverMin, driverMax);
-    const activeDriver = findDriverWithLocations(session.locations ?? [], priorities);
+    const activeDriver = findDriverWithTelemetry(session.telemetry ?? [], priorities);
     const lapDetails = buildLapDetails(
       session.laps ?? [],
       activeDriver,
@@ -86,9 +85,9 @@ export function normalizeDriverNumber(value: unknown) {
   return null;
 }
 
-export function findDriverWithLocations(locations: LocationRecord[], priorities: number[]) {
+export function findDriverWithTelemetry(telemetry: TelemetrySample[], priorities: number[]) {
   const driversWithData = new Set<number>();
-  locations.forEach((record) => {
+  telemetry.forEach((record) => {
     const driver = normalizeDriverNumber(record.driver_number);
     if (driver != null) {
       driversWithData.add(driver);
@@ -104,20 +103,12 @@ export function findDriverWithLocations(locations: LocationRecord[], priorities:
   return priorities[0] ?? null;
 }
 
-export function filterLocationsByDriver(locations: LocationRecord[], driver: number | null) {
+export function filterTelemetryByDriver(telemetry: TelemetrySample[], driver: number | null) {
   if (!driver) {
     return [];
   }
 
-  return locations.filter((record) => normalizeDriverNumber(record.driver_number) === driver);
-}
-
-export function filterCarDataByDriver(carData: CarDataRecord[], driver: number | null) {
-  if (!driver) {
-    return [];
-  }
-
-  return carData.filter((record) => normalizeDriverNumber(record.driver_number) === driver);
+  return telemetry.filter((record) => normalizeDriverNumber(record.driver_number) === driver);
 }
 
 export function buildLapDetails(
@@ -187,26 +178,23 @@ export function selectRecordsForView<T extends Record<string, unknown>>(
     return records.slice(0, limit);
   }
 
+  const targetLap = Number(lapRange.lap_number);
+  if (Number.isFinite(targetLap)) {
+    const lapFiltered = records.filter((record) => {
+      const lapNumber = normalizeDriverNumber((record as Record<string, unknown>).lap_number);
+      return lapNumber === targetLap;
+    });
+    if (lapFiltered.length) {
+      return lapFiltered.slice(0, limit);
+    }
+  }
+
   const startMs = parseTime(lapRange.start) ?? Number.NEGATIVE_INFINITY;
   const endMs = lapRange.end ? parseTime(lapRange.end) ?? Number.POSITIVE_INFINITY : Number.POSITIVE_INFINITY;
 
   return records.filter((record) => {
     const timestamp = getRecordTimestamp(record);
     return timestamp != null && timestamp >= startMs && timestamp < endMs;
-  });
-}
-
-export function attachSpeedToLocations(
-  locations: LocationRecord[],
-  carData: CarDataRecord[]
-) {
-  if (!carData.length) {
-    return locations.map((record) => ({ ...record }));
-  }
-
-  return locations.map((record, index) => {
-    const speed = extractSpeed(carData[index]);
-    return speed == null ? { ...record } : { ...record, speed };
   });
 }
 
@@ -312,26 +300,9 @@ function computeDriverList(
   return Array.from(driverSet).sort((a, b) => a - b);
 }
 
-function extractSpeed(record?: CarDataRecord) {
-  if (!record) {
-    return undefined;
-  }
-
-  const raw = record.speed as unknown;
-  if (typeof raw === 'number' && Number.isFinite(raw)) {
-    return raw;
-  }
-  if (typeof raw === 'string') {
-    const numeric = Number(raw);
-    if (Number.isFinite(numeric)) {
-      return numeric;
-    }
-  }
-  return undefined;
-}
-
 function getRecordTimestamp(record: Record<string, unknown>) {
   const raw =
+    (typeof record.sample_time === 'string' && record.sample_time) ||
     (typeof record.date === 'string' && record.date) ||
     (typeof record.timestamp === 'string' && record.timestamp) ||
     (typeof record.time === 'string' && record.time);

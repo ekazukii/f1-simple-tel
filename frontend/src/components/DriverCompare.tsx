@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import type { OpenF1SessionData } from '../types';
 import {
   buildLapDetails,
-  filterCarDataByDriver,
+  filterTelemetryByDriver,
   normalizeDriverNumber,
   selectRecordsForView,
   type LapDetail
@@ -152,7 +152,7 @@ export function DriverCompare({ session, selectedLap, preferredDriver }: Props) 
 
 function deriveDrivers(session: OpenF1SessionData) {
   const drivers = new Set<number>();
-  (session.carData ?? []).forEach((record) => {
+  (session.telemetry ?? []).forEach((record) => {
     const driver = normalizeDriverNumber(record.driver_number);
     if (driver != null) {
       drivers.add(driver);
@@ -191,8 +191,8 @@ function buildSeries(
     return [];
   }
 
-  const carData = filterCarDataByDriver(session.carData ?? [], driver);
-  const lapSamples = selectRecordsForView(carData, lapRange, 6000);
+  const telemetry = filterTelemetryByDriver(session.telemetry ?? [], driver);
+  const lapSamples = selectRecordsForView(telemetry, lapRange, 6000);
   if (!lapSamples.length) {
     return [];
   }
@@ -565,6 +565,7 @@ function toPercent(value: unknown) {
 
 function getTimestamp(record: Record<string, unknown>) {
   const raw =
+    (typeof record.sample_time === 'string' && record.sample_time) ||
     (typeof record.date === 'string' && record.date) ||
     (typeof record.timestamp === 'string' && record.timestamp) ||
     (typeof record.time === 'string' && record.time);

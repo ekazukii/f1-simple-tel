@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef } from "react";
-import type { LocationRecord } from "../types";
+import type { TelemetrySample } from "../types";
 
 interface Props {
-  points: Array<LocationRecord & { speed?: number }>;
+  points: TelemetrySample[];
   width?: number;
   height?: number;
 }
@@ -24,6 +24,13 @@ export function TelemetryCanvas({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const canvasPoints = useMemo(() => projectPoints(points), [points]);
+
+  useEffect(() => {
+    if (!points.length) {
+      return;
+    }
+    countOutOfOrderSamples(points, 1000);
+  }, [points]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -112,7 +119,7 @@ export function TelemetryCanvas({
 }
 
 function projectPoints(
-  points: Array<LocationRecord & { speed?: number }>
+  points: TelemetrySample[]
 ): CanvasPoint[] {
   return points.reduce<CanvasPoint[]>((acc, point) => {
     const x = pickNumeric(point, ["x", "lon", "long", "longitude"]);
@@ -126,6 +133,28 @@ function projectPoints(
     acc.push({ x, y, speed });
     return acc;
   }, []);
+}
+
+function countOutOfOrderSamples(points: TelemetrySample[], limit: number) {
+  let lastTimestamp: number | null = null;
+  let violations = 0;
+
+  for (let index = 0; index < points.length && index < limit; index += 1) {
+    const value = points[index]?.sample_time;
+    const current = typeof value === "string" ? Date.parse(value) : NaN;
+
+    if (!Number.isFinite(current)) {
+      continue;
+    }
+
+    if (lastTimestamp != null && current < lastTimestamp) {
+      violations += 1;
+    }
+
+    lastTimestamp = current;
+  }
+
+  return violations;
 }
 
 function pickNumeric(record: Record<string, unknown>, keys: string[]) {
