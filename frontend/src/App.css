@@ -15,6 +15,63 @@ body {
   color: #fdfdfd;
 }
 
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-shell__content {
+  flex: 1;
+}
+
+.app-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 2rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(8, 11, 25, 0.85);
+  backdrop-filter: blur(12px);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.app-nav__brand {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.app-nav__brand strong {
+  font-size: 1.25rem;
+}
+
+.app-nav__links {
+  display: flex;
+  gap: 1rem;
+}
+
+.app-nav__link {
+  text-decoration: none;
+  color: #c7cee6;
+  font-weight: 600;
+  padding: 0.4rem 0.75rem;
+  border-radius: 999px;
+  transition: background 0.2s, color 0.2s;
+}
+
+.app-nav__link:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+}
+
+.app-nav__link--active {
+  background: #4563ff;
+  color: #ffffff;
+}
+
 main.app {
   max-width: 1200px;
   margin: 0 auto;
@@ -123,6 +180,20 @@ main.app {
 .driver-select__dropdown-indicator:hover,
 .driver-select__clear-indicator:hover {
   color: #ffffff;
+}
+
+.race-replayer {
+  max-width: 960px;
+  margin: 4rem auto;
+  padding: 2.5rem;
+  border-radius: 1.5rem;
+  background: rgba(9, 12, 24, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: center;
+}
+
+.race-replayer__empty h1 {
+  margin: 0.5rem 0 1rem;
 }
 
 .session-picker {
