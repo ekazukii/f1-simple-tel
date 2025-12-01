@@ -303,8 +303,28 @@ async function fetchTelemetry(sessionKey: number): Promise<TelemetrySample[]> {
       z,
       latitude,
       longitude
-    FROM telemetry_samples
-    WHERE session_key = ${sessionKey}
+    FROM (
+      SELECT DISTINCT ON (driver_number, time_bucket('1 seconds', sample_time))
+        driver_number,
+        sample_time,
+        lap_number,
+        drs,
+        speed,
+        brake,
+        rpm,
+        n_gear,
+        throttle,
+        x,
+        y,
+        z,
+        latitude,
+        longitude
+      FROM telemetry_samples
+      WHERE session_key = ${sessionKey}
+      ORDER BY driver_number,
+        time_bucket('1 seconds', sample_time),
+        sample_time DESC
+    ) AS bucketed
     ORDER BY driver_number, sample_time
   `) as Array<Record<string, unknown>>;
 
