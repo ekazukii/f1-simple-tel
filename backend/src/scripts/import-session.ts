@@ -670,7 +670,8 @@ function formatIntArray(values: Array<number | null> | null) {
 
 async function insertTelemetry(tx: typeof db, rows: TelemetryRow[]) {
   for (const chunk of chunkArray(rows, BATCH_SIZE)) {
-    const values = chunk.map((row) =>
+    const uniqueRows = dedupeTelemetryRows(chunk);
+    const values = uniqueRows.map((row) =>
       TELEMETRY_COLUMNS.map((column) => {
         const key = column as keyof TelemetryRow;
         const value = row[key];
@@ -864,4 +865,16 @@ function chunkArray<T>(values: T[], size: number) {
     chunks.push(values.slice(i, i + size));
   }
   return chunks;
+}
+
+function dedupeTelemetryRows(rows: TelemetryRow[]) {
+  const seen = new Set<string>();
+  return rows.filter((row) => {
+    const key = `${row.session_key}:${row.driver_number}:${row.sample_time}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
 }

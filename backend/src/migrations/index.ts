@@ -5,6 +5,7 @@ import expandMeetings from "./003_expand_meetings";
 import addTelemetryLapNumber from "./004_add_telemetry_lap_number";
 import addTelemetryOrderIndex from "./005_add_telemetry_order_index";
 import expandTelemetryChunks from "./006_expand_telemetry_chunks";
+import expandPitDuration from "./007_expand_pit_duration";
 
 export const migrations: Migration[] = [
   initialSchema,
@@ -13,4 +14,5 @@ export const migrations: Migration[] = [
   addTelemetryLapNumber,
   addTelemetryOrderIndex,
   expandTelemetryChunks,
+  expandPitDuration,
 ];
