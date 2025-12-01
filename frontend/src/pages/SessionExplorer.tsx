@@ -5,6 +5,7 @@ import { TelemetryCanvas } from '../components/TelemetryCanvas';
 import { SessionInsights } from '../components/SessionInsights';
 import { DriverCompare } from '../components/DriverCompare';
 import type { OpenF1SessionData } from '../types';
+import { fetchSession } from '../api/sessions';
 import {
   buildDriverPriorityList,
   buildLapDetails,
@@ -16,8 +17,8 @@ import {
 } from '../utils/telemetry';
 import { getDriverHistory } from '../utils/drivers';
 import sessionCatalog from '../data/sessionCatalog.json';
-
-const BACKEND_BASE_URL = (import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:4000').replace(/\/$/, '');
+import type { SessionCatalogEntry } from '../utils/sessionCatalog';
+import { buildSessionOptions } from '../utils/sessionCatalog';
 const MAX_DRIVER_POINTS = 1000;
 const DRIVER_MIN = 1;
 const DRIVER_MAX = 99;
@@ -25,23 +26,6 @@ const DRIVER_MAX = 99;
 interface DriverOption {
   value: number;
   label: string;
-}
-
-interface SessionCatalogEntry {
-  meeting_key: number;
-  session_key: number;
-  location: string;
-  date_start: string;
-  date_end: string;
-  session_type: string;
-  session_name: string;
-  country_key: number;
-  country_code: string;
-  country_name: string;
-  circuit_key: number;
-  circuit_short_name: string;
-  gmt_offset: string;
-  year: number;
 }
 
 type SessionState = Record<string, OpenF1SessionData>;
@@ -419,14 +403,6 @@ function SessionPanel({ sessionKey, data, loading, preferredDriver, selectedLap 
   );
 }
 
-async function fetchSession(sessionKey: string): Promise<OpenF1SessionData> {
-  const response = await fetch(`${BACKEND_BASE_URL}/session/${encodeURIComponent(sessionKey)}`);
-  if (!response.ok) {
-    throw new Error(`Backend request failed with status ${response.status}`);
-  }
-  return (await response.json()) as OpenF1SessionData;
-}
-
 function formatDate(value?: string | null) {
   if (!value) {
     return 'Unknown time';
@@ -440,20 +416,6 @@ function formatDate(value?: string | null) {
   } catch (error) {
     return value;
   }
-}
-
-function buildSessionOptions(catalog: SessionCatalogEntry[]) {
-  const currentYear = new Date().getFullYear();
-  return catalog
-    .filter((entry) => {
-      const type = String(entry.session_type || '').toUpperCase();
-      return entry.year === currentYear && (type === 'RACE' || type === 'SPRINT');
-    })
-    .sort((a, b) => new Date(a.date_start).getTime() - new Date(b.date_start).getTime())
-    .map((entry) => ({
-      value: String(entry.session_key),
-      label: `${entry.circuit_short_name} - ${entry.session_name}`
-    }));
 }
 
 export default SessionExplorer;
