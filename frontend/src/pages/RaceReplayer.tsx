@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import '../App.css'
 import sessionCatalog from '../data/sessionCatalog.json'
-import type { OpenF1SessionData } from '../types'
+import type { OpenF1SessionData, RaceControlRecord } from '../types'
 import { fetchSession } from '../api/sessions'
 import type { SessionCatalogEntry } from '../utils/sessionCatalog'
 import { buildSessionOptions } from '../utils/sessionCatalog'
 import RaceReplayCanvas from '../components/RaceReplayCanvas'
 import type { ReplayPoint } from '../components/RaceReplayCanvas'
+import ReplayPlayer, { type ReplayEvent } from '../components/ReplayPlayer'
 import { getDriverColor } from '../utils/teamColors'
 import { getDriverByNumberOnDate } from '../utils/drivers'
 
@@ -121,6 +122,8 @@ export function RaceReplayer() {
     }).filter((point): point is ReplayPoint => Boolean(point))
   }, [timelines, currentTime, trackBounds, playbackRange, session?.sessionInfo?.date_start])
 
+  const raceEvents = useMemo<ReplayEvent[]>(() => buildRaceEvents(session, playbackRange), [session, playbackRange])
+
   const durationLabel = useMemo(() =>
     playbackRange ? formatDuration(currentTime - playbackRange.start) : '00:00.0',
   [currentTime, playbackRange])
@@ -158,14 +161,6 @@ export function RaceReplayer() {
           <RaceReplayCanvas points={replayPoints} bounds={trackBounds} />
           <div className="race-replay-controls">
             <div className="playback-controls">
-              <button
-                type="button"
-                className="pill"
-                onClick={() => setIsPlaying((prev) => !prev)}
-                disabled={!playbackRange}
-              >
-                {isPlaying ? 'Pause' : 'Play'}
-              </button>
               <div className="playback-time">
                 <strong>{durationLabel}</strong>
                 {playbackRange && (
@@ -175,33 +170,18 @@ export function RaceReplayer() {
                 )}
               </div>
             </div>
-            <div className="speed-controls">
-              <label htmlFor="speed-select">Speed</label>
-              <select
-                id="speed-select"
-                value={speed}
-                onChange={(event) => setSpeed(Number(event.target.value))}
-              >
-                {SPEED_PRESETS.map((preset) => (
-                  <option value={preset} key={preset}>
-                    {preset}×
-                  </option>
-                ))}
-              </select>
-            </div>
             {playbackRange && (
-              <div className="timeline-slider">
-                <input
-                  type="range"
-                  min={0}
-                  max={playbackRange.end - playbackRange.start}
-                  value={Math.max(0, currentTime - playbackRange.start)}
-                  onChange={(event) => {
-                    const next = playbackRange.start + Number(event.target.value)
-                    setCurrentTime(next)
-                  }}
-                />
-              </div>
+              <ReplayPlayer
+                range={playbackRange}
+                currentTime={currentTime}
+                onTimeChange={setCurrentTime}
+                speed={speed}
+                speedOptions={SPEED_PRESETS}
+                onSpeedChange={setSpeed}
+                events={raceEvents}
+                isPlaying={isPlaying}
+                onTogglePlay={() => setIsPlaying((prev) => !prev)}
+              />
             )}
           </div>
         </section>
@@ -339,6 +319,81 @@ function buildDriverLabel(driver: number, sessionDate?: string | null) {
     return `#${driver}`
   }
   return `#${driver} ${info.firstName} ${info.lastName}`
+}
+
+function buildRaceEvents(
+  session: OpenF1SessionData | null,
+  playbackRange: { start: number; end: number } | null
+): ReplayEvent[] {
+  if (!session || !playbackRange) {
+    return []
+  }
+  const duration = playbackRange.end - playbackRange.start
+  if (duration <= 0) {
+    return []
+  }
+
+  return session.raceControl
+    .map((record, index) => {
+      const type = classifyRaceControlEvent(record)
+      if (!type) {
+        return null
+      }
+      const time = Date.parse(record.event_time)
+      if (!Number.isFinite(time)) {
+        return null
+      }
+      if (time < playbackRange.start || time > playbackRange.end) {
+        return null
+      }
+      return {
+        id: `${type}-${time}-${index}`,
+        time,
+        label: buildRaceEventLabel(type, record),
+        type
+      }
+    })
+    .filter((event): event is ReplayEvent => Boolean(event))
+    .sort((a, b) => a.time - b.time)
+}
+
+function classifyRaceControlEvent(record: RaceControlRecord): ReplayEvent['type'] | null {
+  const flag = normalizeRaceControlValue(record.flag)
+  const message = normalizeRaceControlValue(record.message)
+
+  if (flag === 'GREEN' || message.includes('GREEN FLAG')) {
+    return 'green'
+  }
+  if (flag === 'RED' || message.includes('RED FLAG')) {
+    return 'red'
+  }
+  if (message.includes('VIRTUAL SAFETY CAR') && message.includes('DEPLOYED')) {
+    return 'virtual-safety-car'
+  }
+  if (message.includes('SAFETY CAR') && message.includes('DEPLOYED')) {
+    return 'safety-car'
+  }
+  return null
+}
+
+function buildRaceEventLabel(type: ReplayEvent['type'], record: RaceControlRecord) {
+  const lap = typeof record.lap_number === 'number' && Number.isFinite(record.lap_number)
+    ? ` (Lap ${record.lap_number})`
+    : ''
+  switch (type) {
+    case 'safety-car':
+      return `Safety Car${lap}`
+    case 'virtual-safety-car':
+      return `Virtual Safety Car${lap}`
+    case 'red':
+      return `Red Flag${lap}`
+    default:
+      return `Green Flag${lap}`
+  }
+}
+
+function normalizeRaceControlValue(value: string | null | undefined) {
+  return value ? value.toUpperCase() : ''
 }
 
 export default RaceReplayer
