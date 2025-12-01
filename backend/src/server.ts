@@ -142,6 +142,9 @@ app.use(async (ctx, next) => {
 
 router.get("/session/:key", async (ctx) => {
   const sessionKey = ctx.params.key?.trim();
+  const sampleSecondsRaw = ctx.query.sampleSeconds ?? ctx.query.sample ?? ctx.query.s;
+  const parsedSample = Number(sampleSecondsRaw);
+  const sampleSeconds = Number.isFinite(parsedSample) && parsedSample > 0 ? parsedSample : null;
 
   if (!sessionKey) {
     ctx.status = 400;
@@ -151,7 +154,7 @@ router.get("/session/:key", async (ctx) => {
 
   try {
     console.log(`[DB] Querying session ${sessionKey}`);
-    const data = await getSessionData(sessionKey);
+    const data = await getSessionData(sessionKey, sampleSeconds);
     ctx.body = data;
     console.log(`[DB] Finish querying session ${sessionKey}`);
   } catch (error) {
@@ -183,14 +186,18 @@ initializeDatabase()
 
 export default app;
 
-async function getSessionData(requestKey: string): Promise<SessionResponse> {
+async function getSessionData(
+  requestKey: string,
+  sampleSeconds: number | null
+): Promise<SessionResponse> {
   const resolved = await resolveSessionKey(requestKey);
   if (!resolved) {
     throw new NotFoundError(`Session ${requestKey} not found`);
   }
   return loadSessionFromDatabase(
     resolved.numericKey,
-    resolved.alias ?? requestKey
+    resolved.alias ?? requestKey,
+    sampleSeconds
   );
 }
 
@@ -227,7 +234,8 @@ async function resolveSessionKey(
 
 async function loadSessionFromDatabase(
   sessionKey: number,
-  requestKey: string
+  requestKey: string,
+  sampleSeconds: number | null
 ): Promise<SessionResponse> {
   let infoRows: Array<Record<string, unknown>> = [];
   try {
@@ -269,7 +277,7 @@ async function loadSessionFromDatabase(
   `) as Array<{ alias: string }>;
 
   const sessionInfo = mapSessionInfo(infoRows[0]);
-  const telemetry = await fetchTelemetry(sessionKey);
+  const telemetry = await fetchTelemetry(sessionKey, sampleSeconds);
   const pitStops = await fetchPitStops(sessionKey);
   const raceControl = await fetchRaceControl(sessionKey);
   const stints = await fetchStints(sessionKey);
@@ -286,47 +294,71 @@ async function loadSessionFromDatabase(
   };
 }
 
-async function fetchTelemetry(sessionKey: number): Promise<TelemetrySample[]> {
-  const rows = (await db`
-    SELECT
-      driver_number,
-      sample_time,
-      lap_number,
-      drs,
-      speed,
-      brake,
-      rpm,
-      n_gear,
-      throttle,
-      x,
-      y,
-      z,
-      latitude,
-      longitude
-    FROM (
-      SELECT DISTINCT ON (driver_number, time_bucket('1 seconds', sample_time))
-        driver_number,
-        sample_time,
-        lap_number,
-        drs,
-        speed,
-        brake,
-        rpm,
-        n_gear,
-        throttle,
-        x,
-        y,
-        z,
-        latitude,
-        longitude
-      FROM telemetry_samples
-      WHERE session_key = ${sessionKey}
-      ORDER BY driver_number,
-        time_bucket('1 seconds', sample_time),
-        sample_time DESC
-    ) AS bucketed
-    ORDER BY driver_number, sample_time
-  `) as Array<Record<string, unknown>>;
+async function fetchTelemetry(
+  sessionKey: number,
+  sampleSeconds: number | null
+): Promise<TelemetrySample[]> {
+  const rows = sampleSeconds
+    ? ((await db`
+        SELECT
+          driver_number,
+          sample_time,
+          lap_number,
+          drs,
+          speed,
+          brake,
+          rpm,
+          n_gear,
+          throttle,
+          x,
+          y,
+          z,
+          latitude,
+          longitude
+        FROM (
+          SELECT DISTINCT ON (driver_number, time_bucket(${sampleSeconds} * INTERVAL '1 second', sample_time))
+            driver_number,
+            sample_time,
+            lap_number,
+            drs,
+            speed,
+            brake,
+            rpm,
+            n_gear,
+            throttle,
+            x,
+            y,
+            z,
+            latitude,
+            longitude
+          FROM telemetry_samples
+          WHERE session_key = ${sessionKey}
+          ORDER BY driver_number,
+            time_bucket(${sampleSeconds} * INTERVAL '1 second', sample_time),
+            sample_time DESC
+        ) AS bucketed
+        ORDER BY driver_number, sample_time
+      `) as Array<Record<string, unknown>>)
+    : ((await db`
+        SELECT
+          driver_number,
+          sample_time,
+          lap_number,
+          drs,
+          speed,
+          brake,
+          rpm,
+          n_gear,
+          throttle,
+          x,
+          y,
+          z,
+          latitude,
+          longitude
+        FROM telemetry_samples
+        WHERE session_key = ${sessionKey}
+        ORDER BY driver_number, sample_time
+      `) as Array<Record<string, unknown>>);
 
   return rows.map((row) => ({
     driver_number: toNumber(row.driver_number) ?? 0,

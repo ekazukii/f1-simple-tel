@@ -163,7 +163,7 @@ function SessionExplorer() {
       try {
         const results = await Promise.all(
           selectedSessions.map(async (sessionKey) => {
-            const data = await fetchSession(sessionKey);
+            const data = await fetchSession(sessionKey, { sampleSeconds: 1 });
             return [sessionKey, data] as const;
           })
         );

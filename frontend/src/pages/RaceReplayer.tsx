@@ -7,6 +7,8 @@ import type { SessionCatalogEntry } from '../utils/sessionCatalog'
 import { buildSessionOptions } from '../utils/sessionCatalog'
 import RaceReplayCanvas from '../components/RaceReplayCanvas'
 import type { ReplayPoint } from '../components/RaceReplayCanvas'
+import { getDriverColor } from '../utils/teamColors'
+import { getDriverByNumberOnDate } from '../utils/drivers'
 
 const SPEED_PRESETS = [0.1, 0.25, 0.5, 1, 2, 4, 10]
 
@@ -113,11 +115,11 @@ export function RaceReplayer() {
         driver: timeline.driver,
         x: sample.x,
         y: sample.y,
-        color: pickDriverColor(timeline.driver),
-        label: `#${timeline.driver}`
+        color: getDriverColor(timeline.driver),
+        label: buildDriverLabel(timeline.driver, session?.sessionInfo?.date_start)
       }
     }).filter((point): point is ReplayPoint => Boolean(point))
-  }, [timelines, currentTime, trackBounds, playbackRange])
+  }, [timelines, currentTime, trackBounds, playbackRange, session?.sessionInfo?.date_start])
 
   const durationLabel = useMemo(() =>
     playbackRange ? formatDuration(currentTime - playbackRange.start) : '00:00.0',
@@ -310,11 +312,6 @@ function getSampleAtTime(samples: DriverSample[], time: number) {
   return best
 }
 
-function pickDriverColor(driver: number) {
-  const palette = ['#ff6b6b', '#ffa94d', '#ffd43b', '#69db7c', '#38d9a9', '#3bc9db', '#4dabf7', '#b197fc', '#f783ac']
-  return palette[driver % palette.length]
-}
-
 function toNumber(value: unknown) {
   if (typeof value === 'number') {
     return Number.isFinite(value) ? value : null
@@ -332,6 +329,16 @@ function formatDuration(ms: number) {
   const seconds = Math.floor((clamped % 60000) / 1000)
   const tenths = Math.floor((clamped % 1000) / 100)
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${tenths}`
+}
+
+function buildDriverLabel(driver: number, sessionDate?: string | null) {
+  const info = sessionDate
+    ? getDriverByNumberOnDate(driver, sessionDate)
+    : getDriverByNumberOnDate(driver, new Date())
+  if (!info) {
+    return `#${driver}`
+  }
+  return `#${driver} ${info.firstName} ${info.lastName}`
 }
 
 export default RaceReplayer
