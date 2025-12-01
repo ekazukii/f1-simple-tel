@@ -4,7 +4,7 @@ import { gunzip } from "zlib";
 import { promisify } from "util";
 import process from "process";
 import { initializeDatabase, db } from "../database";
-import { OpenF1SessionData } from "../datasources/openf1org";
+import { OpenF1SessionData, fetchOpenF1Session } from "../datasources/openf1org";
 
 const gunzipAsync = promisify(gunzip);
 const BATCH_SIZE = 1000;
@@ -151,21 +151,27 @@ const LAP_COLUMNS: (keyof LapRow & string)[] = [
   "segments_sector_3",
 ];
 
+type ImportSource =
+  | { kind: "file"; path: string }
+  | { kind: "session"; sessionKey: string };
+
 async function main() {
-  const filePath = process.argv[2];
-  if (!filePath) {
-    console.error("Usage: bun run import-session -- <path-to-json-or-zip>");
-    process.exit(1);
+  const source = await resolveSource(process.argv.slice(2));
+  let sessionData: OpenF1SessionData;
+
+  if (source.kind === "file") {
+    console.log(`[Import] Reading session from file ${source.path}`);
+    sessionData = await readSessionFromFile(source.path);
+  } else {
+    console.log(`[Import] Fetching session ${source.sessionKey} from openf1.org`);
+    sessionData = await fetchOpenF1Session(source.sessionKey);
   }
 
-  const resolvedPath = path.resolve(process.cwd(), filePath);
-  const json = await readSessionFromFile(resolvedPath);
-
   await initializeDatabase();
-  await importSession(json);
+  await importSession(sessionData);
 
   console.log(
-    `Imported session ${json.sessionInfo.session_key} (${json.sessionInfo.session_name})`
+    `Imported session ${sessionData.sessionInfo.session_key} (${sessionData.sessionInfo.session_name})`
   );
 }
 
@@ -173,6 +179,61 @@ main().catch((error) => {
   console.error("Failed to import session", error);
   process.exit(1);
 });
+
+async function resolveSource(args: string[]): Promise<ImportSource> {
+  if (!args.length) {
+    printUsage();
+  }
+
+  const [first, second] = args;
+  if (isFlag(first, "session")) {
+    if (!second) {
+      printUsage();
+    }
+    return { kind: "session", sessionKey: second };
+  }
+
+  if (isFlag(first, "file")) {
+    if (!second) {
+      printUsage();
+    }
+    return { kind: "file", path: path.resolve(process.cwd(), second) };
+  }
+
+  const candidatePath = path.resolve(process.cwd(), first);
+  if (await pathExists(candidatePath)) {
+    return { kind: "file", path: candidatePath };
+  }
+
+  return { kind: "session", sessionKey: first };
+}
+
+function isFlag(value: string | undefined, name: string) {
+  if (!value) {
+    return false;
+  }
+  return value === `--${name}` || value === `-${name[0]}`;
+}
+
+async function pathExists(filePath: string) {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") {
+      return false;
+    }
+    throw error;
+  }
+}
+
+function printUsage(): never {
+  console.error(
+    "Usage: bun run import-session -- [--file <path>|--session <session_key>|<path>]"
+  );
+  process.exit(1);
+}
 
 async function readSessionFromFile(filePath: string): Promise<OpenF1SessionData> {
   const buffer = await fs.readFile(filePath);
@@ -610,9 +671,11 @@ function formatIntArray(values: Array<number | null> | null) {
 async function insertTelemetry(tx: typeof db, rows: TelemetryRow[]) {
   for (const chunk of chunkArray(rows, BATCH_SIZE)) {
     const values = chunk.map((row) =>
-      TELEMETRY_COLUMNS.map((column) =>
-        row[column as keyof TelemetryRow] ?? null
-      )
+      TELEMETRY_COLUMNS.map((column) => {
+        const key = column as keyof TelemetryRow;
+        const value = row[key];
+        return value ?? null;
+      })
     );
     await tx`
       INSERT INTO telemetry_samples (

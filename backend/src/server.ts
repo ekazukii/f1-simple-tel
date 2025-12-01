@@ -96,6 +96,13 @@ interface SessionResponse {
   laps: LapRow[];
 }
 
+class NotFoundError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "NotFoundError";
+  }
+}
+
 const app = new Koa();
 const router = new Router();
 
@@ -150,8 +157,13 @@ router.get("/session/:key", async (ctx) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error(`[HTTP] Failed to load session ${sessionKey}:`, error);
-    ctx.status = 502;
-    ctx.body = { error: "Failed to fetch session data", detail: message };
+    if (error instanceof NotFoundError) {
+      ctx.status = 404;
+      ctx.body = { error: message };
+    } else {
+      ctx.status = 502;
+      ctx.body = { error: "Failed to fetch session data", detail: message };
+    }
   }
 });
 
@@ -174,7 +186,7 @@ export default app;
 async function getSessionData(requestKey: string): Promise<SessionResponse> {
   const resolved = await resolveSessionKey(requestKey);
   if (!resolved) {
-    throw new Error(`Session ${requestKey} not found`);
+    throw new NotFoundError(`Session ${requestKey} not found`);
   }
   return loadSessionFromDatabase(
     resolved.numericKey,
@@ -249,7 +261,7 @@ async function loadSessionFromDatabase(
   }
 
   if (!infoRows.length) {
-    throw new Error(`Session ${sessionKey} not found`);
+    throw new NotFoundError(`Session ${sessionKey} not found`);
   }
 
   const aliasRows = (await db`
