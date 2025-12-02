@@ -316,7 +316,7 @@ async function fetchTelemetry(
           latitude,
           longitude
         FROM (
-          SELECT DISTINCT ON (driver_number, time_bucket(${sampleSeconds} * INTERVAL '1 second', sample_time))
+          SELECT
             driver_number,
             sample_time,
             lap_number,
@@ -330,13 +330,16 @@ async function fetchTelemetry(
             y,
             z,
             latitude,
-            longitude
+            longitude,
+            ROW_NUMBER() OVER (
+              PARTITION BY driver_number,
+                time_bucket(${sampleSeconds} * INTERVAL '1 second', sample_time)
+              ORDER BY sample_time DESC
+            ) AS row_rank
           FROM telemetry_samples
           WHERE session_key = ${sessionKey}
-          ORDER BY driver_number,
-            time_bucket(${sampleSeconds} * INTERVAL '1 second', sample_time),
-            sample_time DESC
-        ) AS bucketed
+        ) AS ranked
+        WHERE row_rank = 1
         ORDER BY driver_number, sample_time
       `) as Array<Record<string, unknown>>)
     : ((await db`

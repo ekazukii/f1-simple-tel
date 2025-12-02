@@ -19,7 +19,6 @@ npm run frontend:dev
 npm run frontend:build
 ```
 
-
 ## Importing sessions
 
 Sessions must exist in the database before the API can serve them. Use the import script to load either a cached export or fresh data from openf1.org:
@@ -36,3 +35,6 @@ bun run import-session -- ./session-cache/9693.json.zip
 ```
 
 After importing, start the backend and request `/session/<key>`; the API responds with `404` when a session has not been imported.
+
+TODO
+-> This loader https://codepen.io/Elvira-Ho/pen/jvmRNK
