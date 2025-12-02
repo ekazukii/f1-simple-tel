@@ -9,6 +9,8 @@ export interface SessionMeta {
   gmt_offset: string;
   location: string;
   meeting_key: number;
+  meeting_name: string | null;
+  meeting_official_name: string | null;
   session_key: number;
   session_name: string;
   session_type: string;
@@ -78,6 +80,8 @@ export interface LapRecord extends Record<string, unknown> {
 
 export interface OpenF1SessionData {
   sessionKey: string;
+  dataState: 'none' | 'no_telemetry' | 'with_telemetry';
+  lastRefreshed: string | null;
   sessionInfo: SessionMeta;
   telemetry: TelemetrySample[];
   pitStops: PitStopRecord[];

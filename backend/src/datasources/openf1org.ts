@@ -30,12 +30,27 @@ export interface OpenF1SessionMeta extends ApiRecord {
 export interface OpenF1SessionData {
   sessionKey: string;
   sessionInfo: OpenF1SessionMeta;
+  meetingInfo: OpenF1MeetingMeta | null;
   carData: ApiRecord[];
   locations: ApiRecord[];
   pitStops: ApiRecord[];
   raceControl: ApiRecord[];
   stints: ApiRecord[];
   laps: ApiRecord[];
+}
+
+export interface OpenF1MeetingMeta extends ApiRecord {
+  meeting_key: number;
+  meeting_name: string | null;
+  meeting_official_name: string | null;
+  location: string | null;
+  country_name: string | null;
+  country_code: string | null;
+  country_key: number | null;
+  gmt_offset: string | null;
+  circuit_key: number | null;
+  circuit_short_name: string | null;
+  year: number | null;
 }
 
 async function fetchCollection<T extends ApiRecord>(
@@ -153,17 +168,24 @@ async function fetchTimeSlicedSeries(
 }
 
 export async function fetchOpenF1Session(
-  sessionKey: string
+  sessionKey: string,
+  options: { includeTelemetry?: boolean } = {}
 ): Promise<OpenF1SessionData> {
+  const includeTelemetry = options.includeTelemetry ?? true;
   const sessionInfo = await fetchSessionMetadata(sessionKey);
+  const meetingInfo = await fetchMeetingMetadata(sessionInfo.meeting_key);
   const slices = createTimeSlices(
     sessionInfo.date_start,
     sessionInfo.date_end,
     TIME_SLICE_COUNT
   );
 
-  const carData = await fetchTimeSlicedSeries("car_data", sessionKey, slices);
-  const locations = await fetchTimeSlicedSeries("location", sessionKey, slices);
+  const carData = includeTelemetry
+    ? await fetchTimeSlicedSeries("car_data", sessionKey, slices)
+    : [];
+  const locations = includeTelemetry
+    ? await fetchTimeSlicedSeries("location", sessionKey, slices)
+    : [];
 
   const [pitStops, raceControl, stints, laps] = await Promise.all([
     fetchCollection<ApiRecord>("pit", { session_key: sessionKey }),
@@ -175,6 +197,7 @@ export async function fetchOpenF1Session(
   return {
     sessionKey,
     sessionInfo,
+    meetingInfo,
     carData,
     locations,
     pitStops,
@@ -182,6 +205,41 @@ export async function fetchOpenF1Session(
     stints,
     laps,
   };
+}
+
+export async function fetchSessionsList(
+  filter: { year?: number } = {}
+): Promise<OpenF1SessionMeta[]> {
+  const params: Record<string, string | number> = {};
+  if (filter.year) {
+    params.year = filter.year;
+  }
+  return fetchCollection<OpenF1SessionMeta>("sessions", params);
+}
+
+export async function fetchMeetingsList(
+  filter: { year?: number } = {}
+): Promise<OpenF1MeetingMeta[]> {
+  const params: Record<string, string | number> = {};
+  if (filter.year) {
+    params.year = filter.year;
+  }
+  return fetchCollection<OpenF1MeetingMeta>("meetings", params);
+}
+
+async function fetchMeetingMetadata(
+  meetingKey: number
+): Promise<OpenF1MeetingMeta | null> {
+  if (!Number.isFinite(meetingKey)) {
+    return null;
+  }
+  const meetings = await fetchCollection<OpenF1MeetingMeta>("meetings", {
+    meeting_key: meetingKey,
+  });
+  if (!meetings.length) {
+    return null;
+  }
+  return meetings[0];
 }
 
 function createTimeSlices(

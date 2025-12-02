@@ -19,6 +19,8 @@ interface SessionMeta {
   gmt_offset: string | null;
   location: string | null;
   meeting_key: number;
+  meeting_name: string | null;
+  meeting_official_name: string | null;
   session_key: number;
   session_name: string | null;
   session_type: string | null;
@@ -88,6 +90,8 @@ interface LapRow {
 
 interface SessionResponse {
   sessionKey: string;
+  dataState: SessionDataState;
+  lastRefreshed: string | null;
   sessionInfo: SessionMeta;
   telemetry: TelemetrySample[];
   pitStops: PitStopRow[];
@@ -95,6 +99,8 @@ interface SessionResponse {
   stints: StintRow[];
   laps: LapRow[];
 }
+
+type SessionDataState = "none" | "no_telemetry" | "with_telemetry";
 
 class NotFoundError extends Error {
   constructor(message: string) {
@@ -246,7 +252,11 @@ async function loadSessionFromDatabase(
         s.session_name,
         s.date_start,
         s.date_end,
+        s.data_status,
+        s.last_refreshed,
         m.meeting_key,
+        m.meeting_name,
+        m.meeting_official_name,
         m.location,
         m.country_name,
         m.country_code,
@@ -277,6 +287,8 @@ async function loadSessionFromDatabase(
   `) as Array<{ alias: string }>;
 
   const sessionInfo = mapSessionInfo(infoRows[0]);
+  const dataState = mapSessionDataState(infoRows[0].data_status);
+  const lastRefreshed = toIsoNullable(infoRows[0].last_refreshed);
   const telemetry = await fetchTelemetry(sessionKey, sampleSeconds);
   const pitStops = await fetchPitStops(sessionKey);
   const raceControl = await fetchRaceControl(sessionKey);
@@ -285,6 +297,8 @@ async function loadSessionFromDatabase(
 
   return {
     sessionKey: aliasRows[0]?.alias ?? requestKey ?? String(sessionKey),
+    dataState,
+    lastRefreshed,
     sessionInfo,
     telemetry,
     pitStops,
@@ -501,11 +515,20 @@ function mapSessionInfo(row: Record<string, unknown>): SessionMeta {
     gmt_offset: nullableString(row.gmt_offset),
     location: nullableString(row.location),
     meeting_key: toNumber(row.meeting_key) ?? 0,
+    meeting_name: nullableString(row.meeting_name),
+    meeting_official_name: nullableString(row.meeting_official_name),
     session_key: toNumber(row.session_key) ?? 0,
     session_name: nullableString(row.session_name),
     session_type: nullableString(row.session_type),
     year: toNumber(row.year),
   };
+}
+
+function mapSessionDataState(value: unknown): SessionDataState {
+  if (value === "no_telemetry" || value === "with_telemetry") {
+    return value;
+  }
+  return "none";
 }
 
 function toNumber(value: unknown): number | null {

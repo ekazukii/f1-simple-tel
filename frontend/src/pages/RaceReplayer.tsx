@@ -55,11 +55,13 @@ export function RaceReplayer() {
     }
 
     let cancelled = false;
+    const abortController = new AbortController();
     setStatus({ loading: true, error: null });
     setSession(null);
     setDownloadProgress({ progress: 0, receivedBytes: 0, totalBytes: null });
 
     fetchSession(selectedSession, {
+      signal: abortController.signal,
       onProgress: (update) => {
         if (!cancelled) {
           setDownloadProgress(update);
@@ -72,19 +74,22 @@ export function RaceReplayer() {
         setStatus({ loading: false, error: null });
       })
       .catch((error) => {
-        if (cancelled) return;
+        if (cancelled || abortController.signal.aborted) {
+          return;
+        }
         const message =
           error instanceof Error ? error.message : "Failed to load session";
         setStatus({ loading: false, error: message });
       })
       .finally(() => {
-        if (!cancelled) {
+        if (!cancelled && !abortController.signal.aborted) {
           setDownloadProgress(null);
         }
       });
 
     return () => {
       cancelled = true;
+      abortController.abort();
     };
   }, [selectedSession]);
 

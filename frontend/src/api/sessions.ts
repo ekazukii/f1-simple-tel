@@ -4,6 +4,7 @@ const BACKEND_BASE_URL = (import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:
 
 interface FetchSessionOptions {
   sampleSeconds?: number | null
+  signal?: AbortSignal
   onProgress?: (update: {
     progress: number | null
     receivedBytes: number
@@ -15,13 +16,13 @@ export async function fetchSession(
   sessionKey: string,
   options: FetchSessionOptions = {}
 ): Promise<OpenF1SessionData> {
-  const { sampleSeconds, onProgress } = options
+  const { sampleSeconds, onProgress, signal } = options
   const params = new URLSearchParams()
   if (sampleSeconds && sampleSeconds > 0) {
     params.set('sample', String(sampleSeconds))
   }
   const url = `${BACKEND_BASE_URL}/session/${encodeURIComponent(sessionKey)}${params.size ? `?${params.toString()}` : ''}`
-  const response = await fetch(url)
+  const response = await fetch(url, { signal })
   if (!response.ok) {
     throw new Error(`Backend request failed with status ${response.status}`)
   }

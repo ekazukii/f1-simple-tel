@@ -155,8 +155,13 @@ type ImportSource =
   | { kind: "file"; path: string }
   | { kind: "session"; sessionKey: string };
 
+interface ResolvedImport {
+  source: ImportSource;
+  includeTelemetry: boolean;
+}
+
 async function main() {
-  const source = await resolveSource(process.argv.slice(2));
+  const { source, includeTelemetry } = await resolveSource(process.argv.slice(2));
   let sessionData: OpenF1SessionData;
 
   if (source.kind === "file") {
@@ -164,11 +169,13 @@ async function main() {
     sessionData = await readSessionFromFile(source.path);
   } else {
     console.log(`[Import] Fetching session ${source.sessionKey} from openf1.org`);
-    sessionData = await fetchOpenF1Session(source.sessionKey);
+    sessionData = await fetchOpenF1Session(source.sessionKey, {
+      includeTelemetry,
+    });
   }
 
   await initializeDatabase();
-  await importSession(sessionData);
+  await importSession(sessionData, { includeTelemetry });
 
   console.log(
     `Imported session ${sessionData.sessionInfo.session_key} (${sessionData.sessionInfo.session_name})`
@@ -180,32 +187,52 @@ main().catch((error) => {
   process.exit(1);
 });
 
-async function resolveSource(args: string[]): Promise<ImportSource> {
+async function resolveSource(args: string[]): Promise<ResolvedImport> {
   if (!args.length) {
     printUsage();
   }
 
-  const [first, second] = args;
+  let includeTelemetry = true;
+  const filtered: string[] = [];
+
+  args.forEach((arg) => {
+    if (arg === "--no-telemetry") {
+      includeTelemetry = false;
+    } else if (arg === "--telemetry") {
+      includeTelemetry = true;
+    } else {
+      filtered.push(arg);
+    }
+  });
+
+  if (!filtered.length) {
+    printUsage();
+  }
+
+  const [first, second] = filtered;
   if (isFlag(first, "session")) {
     if (!second) {
       printUsage();
     }
-    return { kind: "session", sessionKey: second };
+    return { source: { kind: "session", sessionKey: second }, includeTelemetry };
   }
 
   if (isFlag(first, "file")) {
     if (!second) {
       printUsage();
     }
-    return { kind: "file", path: path.resolve(process.cwd(), second) };
+    return {
+      source: { kind: "file", path: path.resolve(process.cwd(), second) },
+      includeTelemetry,
+    };
   }
 
   const candidatePath = path.resolve(process.cwd(), first);
   if (await pathExists(candidatePath)) {
-    return { kind: "file", path: candidatePath };
+    return { source: { kind: "file", path: candidatePath }, includeTelemetry };
   }
 
-  return { kind: "session", sessionKey: first };
+  return { source: { kind: "session", sessionKey: first }, includeTelemetry };
 }
 
 function isFlag(value: string | undefined, name: string) {
@@ -230,7 +257,7 @@ async function pathExists(filePath: string) {
 
 function printUsage(): never {
   console.error(
-    "Usage: bun run import-session -- [--file <path>|--session <session_key>|<path>]"
+    "Usage: bun run import-session -- [--file <path>|--session <session_key>|<path>] [--no-telemetry]"
   );
   process.exit(1);
 }
@@ -247,23 +274,34 @@ async function readSessionFromFile(filePath: string): Promise<OpenF1SessionData>
   return JSON.parse(buffer.toString("utf-8"));
 }
 
-async function importSession(data: OpenF1SessionData) {
+async function importSession(
+  data: OpenF1SessionData,
+  options: { includeTelemetry?: boolean } = {}
+) {
   const alias = data.sessionKey?.trim();
   const info = data.sessionInfo;
   const sessionKey = info.session_key;
   const meetingKey = info.meeting_key;
+  const includeTelemetry = options.includeTelemetry ?? true;
+  const meetingMeta = data.meetingInfo ?? null;
 
   const carData = data.carData ?? [];
   const driverStartTimes = computeDriverStartTimes(carData);
-  const telemetryRows = mergeTelemetry(
-    carData,
-    data.locations ?? [],
-    data.laps ?? [],
-    sessionKey,
-    meetingKey,
-    driverStartTimes
+  const telemetryRows = includeTelemetry
+    ? mergeTelemetry(
+        carData,
+        data.locations ?? [],
+        data.laps ?? [],
+        sessionKey,
+        meetingKey,
+        driverStartTimes
+      )
+    : [];
+  console.log(
+    includeTelemetry
+      ? `[Import] telemetry rows: ${telemetryRows.length}`
+      : "[Import] telemetry rows skipped"
   );
-  console.log(`[Import] telemetry rows: ${telemetryRows.length}`);
 
   const pitRows: PitStopRow[] = (data.pitStops ?? [])
     .map((pit) => {
@@ -354,25 +392,47 @@ async function importSession(data: OpenF1SessionData) {
     .filter((row): row is LapRow => row !== null);
 
   await db.begin(async (tx) => {
+    const hasTelemetry = telemetryRows.length > 0;
+    const sessionDataStatus = hasTelemetry ? "with_telemetry" : "no_telemetry";
+    const refreshedAt = new Date();
+
+    const mergedMeeting = {
+      location:
+        nullableString(meetingMeta?.location) ?? nullableString(info.location),
+      country_name:
+        nullableString(meetingMeta?.country_name) ?? nullableString(info.country_name),
+      country_code:
+        nullableString(meetingMeta?.country_code) ?? nullableString(info.country_code),
+      country_key:
+        toNumber(meetingMeta?.country_key) ?? toNumber(info.country_key),
+      gmt_offset:
+        nullableString(meetingMeta?.gmt_offset) ?? nullableString(info.gmt_offset),
+      circuit_key:
+        toNumber(meetingMeta?.circuit_key) ?? toNumber(info.circuit_key),
+      circuit_short_name:
+        nullableString(meetingMeta?.circuit_short_name) ??
+        nullableString(info.circuit_short_name),
+      year: toNumber(meetingMeta?.year) ?? toNumber(info.year),
+      meeting_name: nullableString(meetingMeta?.meeting_name),
+      meeting_official_name: nullableString(meetingMeta?.meeting_official_name),
+    };
+
     await tx`
       INSERT INTO meetings ${tx({
         meeting_key: meetingKey,
-        location: info.location,
-        country_name: info.country_name,
-        country_code: info.country_code,
-        gmt_offset: info.gmt_offset,
-        circuit_key: info.circuit_key,
-        circuit_short_name: info.circuit_short_name,
-        year: info.year,
+        ...mergedMeeting,
       })}
       ON CONFLICT (meeting_key) DO UPDATE SET
         location = EXCLUDED.location,
         country_name = EXCLUDED.country_name,
         country_code = EXCLUDED.country_code,
+        country_key = EXCLUDED.country_key,
         gmt_offset = EXCLUDED.gmt_offset,
         circuit_key = EXCLUDED.circuit_key,
         circuit_short_name = EXCLUDED.circuit_short_name,
-        year = EXCLUDED.year
+        year = EXCLUDED.year,
+        meeting_name = EXCLUDED.meeting_name,
+        meeting_official_name = EXCLUDED.meeting_official_name
     `;
 
     await tx`
@@ -383,18 +443,34 @@ async function importSession(data: OpenF1SessionData) {
         session_name: info.session_name,
         date_start: info.date_start,
         date_end: info.date_end,
+        data_status: sessionDataStatus,
+        last_refreshed: refreshedAt,
       })}
       ON CONFLICT (session_key) DO UPDATE SET
         meeting_key = EXCLUDED.meeting_key,
         session_type = EXCLUDED.session_type,
         session_name = EXCLUDED.session_name,
         date_start = EXCLUDED.date_start,
-        date_end = EXCLUDED.date_end
+        date_end = EXCLUDED.date_end,
+        data_status = EXCLUDED.data_status,
+        last_refreshed = EXCLUDED.last_refreshed
     `;
 
+    const aliasValues = new Set<string>();
     if (alias) {
+      aliasValues.add(alias);
+    }
+    const circuitAlias = nullableString(info.circuit_short_name);
+    if (circuitAlias) {
+      aliasValues.add(circuitAlias);
+    }
+
+    for (const aliasValue of aliasValues) {
       await tx`
-        INSERT INTO session_aliases ${tx({ alias, session_key: sessionKey })}
+        INSERT INTO session_aliases ${tx({
+          alias: aliasValue,
+          session_key: sessionKey,
+        })}
         ON CONFLICT (alias) DO UPDATE SET session_key = EXCLUDED.session_key
       `;
     }
