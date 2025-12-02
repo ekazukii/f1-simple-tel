@@ -153,7 +153,8 @@ const LAP_COLUMNS: (keyof LapRow & string)[] = [
 
 type ImportSource =
   | { kind: "file"; path: string }
-  | { kind: "session"; sessionKey: string };
+  | { kind: "session"; sessionKey: string }
+  | { kind: "meeting"; meetingKey: number };
 
 interface ResolvedImport {
   source: ImportSource;
@@ -162,8 +163,15 @@ interface ResolvedImport {
 
 async function main() {
   const { source, includeTelemetry } = await resolveSource(process.argv.slice(2));
-  let sessionData: OpenF1SessionData;
 
+  await initializeDatabase();
+
+  if (source.kind === "meeting") {
+    await importMeetingSessions(source.meetingKey, includeTelemetry);
+    return;
+  }
+
+  let sessionData: OpenF1SessionData;
   if (source.kind === "file") {
     console.log(`[Import] Reading session from file ${source.path}`);
     sessionData = await readSessionFromFile(source.path);
@@ -174,7 +182,6 @@ async function main() {
     });
   }
 
-  await initializeDatabase();
   await importSession(sessionData, { includeTelemetry });
 
   console.log(
@@ -193,46 +200,75 @@ async function resolveSource(args: string[]): Promise<ResolvedImport> {
   }
 
   let includeTelemetry = true;
-  const filtered: string[] = [];
+  let source: ImportSource | null = null;
+  const positional: string[] = [];
 
-  args.forEach((arg) => {
-    if (arg === "--no-telemetry") {
-      includeTelemetry = false;
-    } else if (arg === "--telemetry") {
-      includeTelemetry = true;
-    } else {
-      filtered.push(arg);
+  const readNext = (currentIndex: number) => {
+    const value = args[currentIndex + 1];
+    if (!value) {
+      printUsage();
     }
-  });
+    return value;
+  };
 
-  if (!filtered.length) {
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    switch (arg) {
+      case "--no-telemetry":
+        includeTelemetry = false;
+        break;
+      case "--telemetry":
+        includeTelemetry = true;
+        break;
+      case "--session":
+      case "-s": {
+        const value = readNext(i);
+        i += 1;
+        source = { kind: "session", sessionKey: value };
+        break;
+      }
+      case "--file":
+      case "-f": {
+        const value = readNext(i);
+        i += 1;
+        source = { kind: "file", path: path.resolve(process.cwd(), value) };
+        break;
+      }
+      case "--meeting":
+      case "-m": {
+        const value = readNext(i);
+        i += 1;
+        const key = Number(value);
+        if (!Number.isFinite(key)) {
+          printUsage();
+        }
+        source = { kind: "meeting", meetingKey: key };
+        break;
+      }
+      case "--help":
+      case "-h":
+        printUsage();
+        break;
+      default:
+        positional.push(arg);
+    }
+  }
+
+  if (!source && positional.length) {
+    const candidate = positional[0];
+    const candidatePath = path.resolve(process.cwd(), candidate);
+    if (await pathExists(candidatePath)) {
+      source = { kind: "file", path: candidatePath };
+    } else {
+      source = { kind: "session", sessionKey: candidate };
+    }
+  }
+
+  if (!source) {
     printUsage();
   }
 
-  const [first, second] = filtered;
-  if (isFlag(first, "session")) {
-    if (!second) {
-      printUsage();
-    }
-    return { source: { kind: "session", sessionKey: second }, includeTelemetry };
-  }
-
-  if (isFlag(first, "file")) {
-    if (!second) {
-      printUsage();
-    }
-    return {
-      source: { kind: "file", path: path.resolve(process.cwd(), second) },
-      includeTelemetry,
-    };
-  }
-
-  const candidatePath = path.resolve(process.cwd(), first);
-  if (await pathExists(candidatePath)) {
-    return { source: { kind: "file", path: candidatePath }, includeTelemetry };
-  }
-
-  return { source: { kind: "session", sessionKey: first }, includeTelemetry };
+  return { source: source!, includeTelemetry };
 }
 
 function isFlag(value: string | undefined, name: string) {
@@ -257,9 +293,39 @@ async function pathExists(filePath: string) {
 
 function printUsage(): never {
   console.error(
-    "Usage: bun run import-session -- [--file <path>|--session <session_key>|<path>] [--no-telemetry]"
+    "Usage: bun run import-session -- [--file <path>|--session <session_key>|--meeting <meeting_key>|<path>] [--no-telemetry]"
   );
   process.exit(1);
+}
+
+async function importMeetingSessions(
+  meetingKey: number,
+  includeTelemetry: boolean
+) {
+  console.log(`[Import] Resolving sessions for meeting ${meetingKey}`);
+  const sessions = (await db`
+    SELECT session_key
+    FROM sessions
+    WHERE meeting_key = ${meetingKey}
+    ORDER BY date_start
+  `) as Array<{ session_key: number }>;
+
+  if (!sessions.length) {
+    console.error(
+      `[Import] No sessions found in database for meeting ${meetingKey}. Run sync-sessions first.`
+    );
+    process.exit(1);
+  }
+
+  for (const row of sessions) {
+    const key = String(row.session_key);
+    console.log(`\n[Import] Fetching session ${key} for meeting ${meetingKey}`);
+    const sessionData = await fetchOpenF1Session(key, { includeTelemetry });
+    await importSession(sessionData, { includeTelemetry });
+    console.log(
+      `[Import] Completed session ${sessionData.sessionInfo.session_key} (${sessionData.sessionInfo.session_name})`
+    );
+  }
 }
 
 async function readSessionFromFile(filePath: string): Promise<OpenF1SessionData> {
