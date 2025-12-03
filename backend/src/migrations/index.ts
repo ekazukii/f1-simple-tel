@@ -8,6 +8,7 @@ import expandTelemetryChunks from "./006_expand_telemetry_chunks";
 import expandPitDuration from "./007_expand_pit_duration";
 import addSessionStatus from "./008_add_session_status";
 import addMeetingNames from "./009_add_meeting_names";
+import createTeamRadio from "./010_create_team_radio";
 
 export const migrations: Migration[] = [
   initialSchema,
@@ -19,4 +20,5 @@ export const migrations: Migration[] = [
   expandPitDuration,
   addSessionStatus,
   addMeetingNames,
+  createTeamRadio,
 ];

@@ -27,6 +27,13 @@ export interface OpenF1SessionMeta extends ApiRecord {
   year: number;
 }
 
+export interface OpenF1TeamRadioRecord extends ApiRecord {
+  date: string;
+  driver_number: number;
+  recording_url: string;
+  session_key: number;
+}
+
 export interface OpenF1SessionData {
   sessionKey: string;
   sessionInfo: OpenF1SessionMeta;
@@ -225,6 +232,18 @@ export async function fetchMeetingsList(
     params.year = filter.year;
   }
   return fetchCollection<OpenF1MeetingMeta>("meetings", params);
+}
+
+export async function fetchTeamRadio(
+  params: { sessionKey: string | number; driverNumber?: number }
+): Promise<OpenF1TeamRadioRecord[]> {
+  const query: Record<string, string | number> = {
+    session_key: params.sessionKey,
+  };
+  if (params.driverNumber) {
+    query.driver_number = params.driverNumber;
+  }
+  return fetchCollection<OpenF1TeamRadioRecord>("team_radio", query);
 }
 
 async function fetchMeetingMetadata(
