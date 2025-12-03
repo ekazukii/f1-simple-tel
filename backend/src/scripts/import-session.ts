@@ -80,6 +80,18 @@ type LapRow = {
   segments_sector_3: Array<number | null> | null;
 };
 
+type WeatherRow = {
+  session_key: number;
+  recorded_at: string;
+  air_temperature: number | null;
+  humidity: number | null;
+  pressure: number | null;
+  rainfall: number | null;
+  track_temperature: number | null;
+  wind_direction: number | null;
+  wind_speed: number | null;
+};
+
 const TELEMETRY_COLUMNS: (keyof TelemetryRow & string)[] = [
   "session_key",
   "meeting_key",
@@ -151,10 +163,24 @@ const LAP_COLUMNS: (keyof LapRow & string)[] = [
   "segments_sector_3",
 ];
 
+const WEATHER_COLUMNS: (keyof WeatherRow & string)[] = [
+  "session_key",
+  "recorded_at",
+  "air_temperature",
+  "humidity",
+  "pressure",
+  "rainfall",
+  "track_temperature",
+  "wind_direction",
+  "wind_speed",
+];
+
 type ImportSource =
   | { kind: "file"; path: string }
   | { kind: "session"; sessionKey: string }
-  | { kind: "meeting"; meetingKey: number };
+  | { kind: "session_range"; start: number; end: number }
+  | { kind: "meeting"; meetingKey: number }
+  | { kind: "meeting_range"; start: number; end: number };
 
 interface ResolvedImport {
   source: ImportSource;
@@ -169,24 +195,39 @@ async function main() {
   if (source.kind === "meeting") {
     await importMeetingSessions(source.meetingKey, includeTelemetry);
     return;
+  } else if (source.kind === "meeting_range") {
+    console.log(
+      `[Import] Bulk meeting import start for keys ${source.start}..${source.end}`
+    );
+    for (let meeting = source.start; meeting <= source.end; meeting += 1) {
+      await importMeetingSessions(meeting, includeTelemetry);
+    }
+    console.log("[Import] Bulk meeting import ended");
+    return;
   }
 
-  let sessionData: OpenF1SessionData;
+  if (source.kind === "session_range") {
+    console.log(
+      `[Import] Bulk session import start for keys ${source.start}..${source.end}`
+    );
+    for (let key = source.start; key <= source.end; key += 1) {
+      await importSessionByKey(String(key), includeTelemetry);
+    }
+    console.log("[Import] Bulk session import ended");
+    return;
+  }
+
   if (source.kind === "file") {
     console.log(`[Import] Reading session from file ${source.path}`);
-    sessionData = await readSessionFromFile(source.path);
-  } else {
-    console.log(`[Import] Fetching session ${source.sessionKey} from openf1.org`);
-    sessionData = await fetchOpenF1Session(source.sessionKey, {
-      includeTelemetry,
-    });
+    const sessionData = await readSessionFromFile(source.path);
+    await importSession(sessionData, { includeTelemetry });
+    console.log(
+      `Imported session ${sessionData.sessionInfo.session_key} (${sessionData.sessionInfo.session_name})`
+    );
+    return;
   }
 
-  await importSession(sessionData, { includeTelemetry });
-
-  console.log(
-    `Imported session ${sessionData.sessionInfo.session_key} (${sessionData.sessionInfo.session_name})`
-  );
+  await importSessionByKey(source.sessionKey, includeTelemetry);
 }
 
 main().catch((error) => {
@@ -224,7 +265,7 @@ async function resolveSource(args: string[]): Promise<ResolvedImport> {
       case "-s": {
         const value = readNext(i);
         i += 1;
-        source = { kind: "session", sessionKey: value };
+        source = parseSessionValue(value);
         break;
       }
       case "--file":
@@ -238,11 +279,7 @@ async function resolveSource(args: string[]): Promise<ResolvedImport> {
       case "-m": {
         const value = readNext(i);
         i += 1;
-        const key = Number(value);
-        if (!Number.isFinite(key)) {
-          printUsage();
-        }
-        source = { kind: "meeting", meetingKey: key };
+        source = parseMeetingValue(value);
         break;
       }
       case "--help":
@@ -260,7 +297,7 @@ async function resolveSource(args: string[]): Promise<ResolvedImport> {
     if (await pathExists(candidatePath)) {
       source = { kind: "file", path: candidatePath };
     } else {
-      source = { kind: "session", sessionKey: candidate };
+      source = parseSessionValue(candidate);
     }
   }
 
@@ -296,6 +333,53 @@ function printUsage(): never {
     "Usage: bun run import-session -- [--file <path>|--session <session_key>|--meeting <meeting_key>|<path>] [--no-telemetry]"
   );
   process.exit(1);
+}
+
+function parseSessionValue(value: string): ImportSource {
+  const range = parseRange(value);
+  if (range) {
+    return { kind: "session_range", start: range.start, end: range.end };
+  }
+  return { kind: "session", sessionKey: value };
+}
+
+function parseMeetingValue(value: string): ImportSource {
+  const range = parseRange(value);
+  if (range) {
+    return { kind: "meeting_range", start: range.start, end: range.end };
+  }
+  const key = Number(value);
+  if (!Number.isFinite(key)) {
+    printUsage();
+  }
+  return { kind: "meeting", meetingKey: key };
+}
+
+function parseRange(value: string): { start: number; end: number } | null {
+  if (!value.includes(":")) {
+    return null;
+  }
+  const [startRaw, endRaw] = value.split(":", 2);
+  const start = Number(startRaw);
+  const end = Number(endRaw);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start > end) {
+    printUsage();
+  }
+  return { start, end };
+}
+
+async function importSessionByKey(
+  sessionKey: string,
+  includeTelemetry: boolean
+) {
+  console.log(`[Import] Fetching session ${sessionKey} from openf1.org`);
+  const sessionData = await fetchOpenF1Session(sessionKey, {
+    includeTelemetry,
+  });
+  await importSession(sessionData, { includeTelemetry });
+  console.log(
+    `Imported session ${sessionData.sessionInfo.session_key} (${sessionData.sessionInfo.session_name})`
+  );
 }
 
 async function importMeetingSessions(
@@ -457,6 +541,26 @@ async function importSession(
     })
     .filter((row): row is LapRow => row !== null);
 
+  const weatherRows: WeatherRow[] = (data.weather ?? [])
+    .map((sample) => {
+      const recorded_at = parseDate(sample.date);
+      if (!recorded_at) {
+        return null;
+      }
+      return {
+        session_key: sessionKey,
+        recorded_at,
+        air_temperature: toNullableNumber(sample.air_temperature),
+        humidity: toNullableNumber(sample.humidity),
+        pressure: toNullableNumber(sample.pressure),
+        rainfall: toNullableNumber(sample.rainfall),
+        track_temperature: toNullableNumber(sample.track_temperature),
+        wind_direction: toNullableNumber(sample.wind_direction),
+        wind_speed: toNullableNumber(sample.wind_speed),
+      };
+    })
+    .filter((row): row is WeatherRow => row !== null);
+
   await db.begin(async (tx) => {
     const hasTelemetry = telemetryRows.length > 0;
     const sessionDataStatus = hasTelemetry ? "with_telemetry" : "no_telemetry";
@@ -546,6 +650,7 @@ async function importSession(
     await tx`DELETE FROM race_control_events WHERE session_key = ${sessionKey}`;
     await tx`DELETE FROM stints WHERE session_key = ${sessionKey}`;
     await tx`DELETE FROM laps WHERE session_key = ${sessionKey}`;
+    await tx`DELETE FROM weather_samples WHERE session_key = ${sessionKey}`;
 
     if (telemetryRows.length) {
       await insertTelemetry(tx, telemetryRows);
@@ -561,6 +666,9 @@ async function importSession(
     }
     if (lapRows.length) {
       await insertLaps(tx, lapRows);
+    }
+    if (weatherRows.length) {
+      await insertWeather(tx, weatherRows);
     }
 
   });
@@ -997,6 +1105,22 @@ async function insertLaps(tx: typeof db, rows: LapRow[]) {
         segments_sector_1 = EXCLUDED.segments_sector_1,
         segments_sector_2 = EXCLUDED.segments_sector_2,
         segments_sector_3 = EXCLUDED.segments_sector_3
+    `;
+  }
+}
+
+async function insertWeather(tx: typeof db, rows: WeatherRow[]) {
+  for (const chunk of chunkArray(rows, BATCH_SIZE)) {
+    await tx`
+      INSERT INTO weather_samples ${tx(chunk)}
+      ON CONFLICT (session_key, recorded_at) DO UPDATE SET
+        air_temperature = EXCLUDED.air_temperature,
+        humidity = EXCLUDED.humidity,
+        pressure = EXCLUDED.pressure,
+        rainfall = EXCLUDED.rainfall,
+        track_temperature = EXCLUDED.track_temperature,
+        wind_direction = EXCLUDED.wind_direction,
+        wind_speed = EXCLUDED.wind_speed
     `;
   }
 }

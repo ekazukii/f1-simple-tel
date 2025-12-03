@@ -88,4 +88,16 @@ export interface OpenF1SessionData {
   raceControl: RaceControlRecord[];
   stints: StintRecord[];
   laps: LapRecord[];
+  weather: WeatherSample[];
+}
+
+export interface WeatherSample {
+  recorded_at: string;
+  air_temperature: number | null;
+  humidity: number | null;
+  pressure: number | null;
+  rainfall: number | null;
+  track_temperature: number | null;
+  wind_direction: number | null;
+  wind_speed: number | null;
 }

@@ -10,7 +10,8 @@
     "import-session": "bun src/scripts/import-session.ts",
     "delete-session": "bun src/scripts/delete-session.ts",
     "sync-sessions": "bun src/scripts/sync-sessions.ts",
-    "sync-radio": "bun src/scripts/sync-radio.ts"
+    "sync-radio": "bun src/scripts/sync-radio.ts",
+    "sync-weather": "bun src/scripts/sync-weather.ts"
   },
   "keywords": [],
   "author": "",

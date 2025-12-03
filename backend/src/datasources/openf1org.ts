@@ -27,13 +27,6 @@ export interface OpenF1SessionMeta extends ApiRecord {
   year: number;
 }
 
-export interface OpenF1TeamRadioRecord extends ApiRecord {
-  date: string;
-  driver_number: number;
-  recording_url: string;
-  session_key: number;
-}
-
 export interface OpenF1SessionData {
   sessionKey: string;
   sessionInfo: OpenF1SessionMeta;
@@ -44,6 +37,14 @@ export interface OpenF1SessionData {
   raceControl: ApiRecord[];
   stints: ApiRecord[];
   laps: ApiRecord[];
+  weather: OpenF1WeatherRecord[];
+}
+
+export interface OpenF1TeamRadioRecord extends ApiRecord {
+  date: string;
+  driver_number: number;
+  recording_url: string;
+  session_key: number;
 }
 
 export interface OpenF1MeetingMeta extends ApiRecord {
@@ -58,6 +59,18 @@ export interface OpenF1MeetingMeta extends ApiRecord {
   circuit_key: number | null;
   circuit_short_name: string | null;
   year: number | null;
+}
+
+export interface OpenF1WeatherRecord extends ApiRecord {
+  date: string;
+  session_key: number;
+  air_temperature: number | null;
+  humidity: number | null;
+  pressure: number | null;
+  rainfall: number | null;
+  track_temperature: number | null;
+  wind_direction: number | null;
+  wind_speed: number | null;
 }
 
 async function fetchCollection<T extends ApiRecord>(
@@ -194,11 +207,12 @@ export async function fetchOpenF1Session(
     ? await fetchTimeSlicedSeries("location", sessionKey, slices)
     : [];
 
-  const [pitStops, raceControl, stints, laps] = await Promise.all([
+  const [pitStops, raceControl, stints, laps, weather] = await Promise.all([
     fetchCollection<ApiRecord>("pit", { session_key: sessionKey }),
     fetchCollection<ApiRecord>("race_control", { session_key: sessionKey }),
     fetchCollection<ApiRecord>("stints", { session_key: sessionKey }),
     fetchCollection<ApiRecord>("laps", { session_key: sessionKey }),
+    fetchWeather({ sessionKey }),
   ]);
 
   return {
@@ -211,6 +225,7 @@ export async function fetchOpenF1Session(
     raceControl,
     stints,
     laps,
+    weather,
   };
 }
 
@@ -244,6 +259,14 @@ export async function fetchTeamRadio(
     query.driver_number = params.driverNumber;
   }
   return fetchCollection<OpenF1TeamRadioRecord>("team_radio", query);
+}
+
+export async function fetchWeather(
+  params: { sessionKey: string | number }
+): Promise<OpenF1WeatherRecord[]> {
+  return fetchCollection<OpenF1WeatherRecord>("weather", {
+    session_key: params.sessionKey,
+  });
 }
 
 async function fetchMeetingMetadata(

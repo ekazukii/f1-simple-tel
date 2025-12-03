@@ -98,9 +98,21 @@ interface SessionResponse {
   raceControl: RaceControlRow[];
   stints: StintRow[];
   laps: LapRow[];
+  weather: WeatherSampleRow[];
 }
 
 type SessionDataState = "none" | "no_telemetry" | "with_telemetry";
+
+interface WeatherSampleRow {
+  recorded_at: string;
+  air_temperature: number | null;
+  humidity: number | null;
+  pressure: number | null;
+  rainfall: number | null;
+  track_temperature: number | null;
+  wind_direction: number | null;
+  wind_speed: number | null;
+}
 
 class NotFoundError extends Error {
   constructor(message: string) {
@@ -294,6 +306,7 @@ async function loadSessionFromDatabase(
   const raceControl = await fetchRaceControl(sessionKey);
   const stints = await fetchStints(sessionKey);
   const laps = await fetchLaps(sessionKey);
+  const weather = await fetchWeatherSamples(sessionKey);
 
   return {
     sessionKey: aliasRows[0]?.alias ?? requestKey ?? String(sessionKey),
@@ -305,6 +318,7 @@ async function loadSessionFromDatabase(
     raceControl,
     stints,
     laps,
+    weather,
   };
 }
 
@@ -500,6 +514,34 @@ async function fetchLaps(sessionKey: number): Promise<LapRow[]> {
     segments_sector_1: toNumberArray(row.segments_sector_1),
     segments_sector_2: toNumberArray(row.segments_sector_2),
     segments_sector_3: toNumberArray(row.segments_sector_3),
+  }));
+}
+
+async function fetchWeatherSamples(sessionKey: number): Promise<WeatherSampleRow[]> {
+  const rows = (await db`
+    SELECT
+      recorded_at,
+      air_temperature,
+      humidity,
+      pressure,
+      rainfall,
+      track_temperature,
+      wind_direction,
+      wind_speed
+    FROM weather_samples
+    WHERE session_key = ${sessionKey}
+    ORDER BY recorded_at
+  `) as Array<Record<string, unknown>>;
+
+  return rows.map((row) => ({
+    recorded_at: toIso(row.recorded_at) ?? new Date().toISOString(),
+    air_temperature: toNullableNumber(row.air_temperature),
+    humidity: toNullableNumber(row.humidity),
+    pressure: toNullableNumber(row.pressure),
+    rainfall: toNullableNumber(row.rainfall),
+    track_temperature: toNullableNumber(row.track_temperature),
+    wind_direction: toNullableNumber(row.wind_direction),
+    wind_speed: toNullableNumber(row.wind_speed),
   }));
 }
 

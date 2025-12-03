@@ -9,6 +9,7 @@ import expandPitDuration from "./007_expand_pit_duration";
 import addSessionStatus from "./008_add_session_status";
 import addMeetingNames from "./009_add_meeting_names";
 import createTeamRadio from "./010_create_team_radio";
+import createWeatherSamples from "./011_create_weather_samples";
 
 export const migrations: Migration[] = [
   initialSchema,
@@ -21,4 +22,5 @@ export const migrations: Migration[] = [
   addSessionStatus,
   addMeetingNames,
   createTeamRadio,
+  createWeatherSamples,
 ];
