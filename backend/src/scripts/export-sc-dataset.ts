@@ -422,3 +422,134 @@ function buildSafetyData(
       vscStart = null;
     }
   });
+  if (scStart !== null) {
+    scIntervals.push({ start: scStart, end: sessionEndMs });
+  }
+  if (vscStart !== null) {
+    vscIntervals.push({ start: vscStart, end: sessionEndMs });
+  }
+
+  return { scIntervals, vscIntervals, scDeployTimes };
+}
+
+function classifyRaceControlEvent(row: RaceControlRow) {
+  const message = (row.message ?? "").toUpperCase();
+  if (message.includes("VIRTUAL SAFETY CAR")) {
+    if (message.includes("DEPLOY")) {
+      return "vsc_start";
+    }
+    if (
+      message.includes("ENDING") ||
+      message.includes("IN THIS LAP") ||
+      message.includes("NOT ACTIVE")
+    ) {
+      return "vsc_end";
+    }
+  }
+  if (message.includes("SAFETY CAR")) {
+    if (message.includes("VIRTUAL")) {
+      // already handled
+    } else if (message.includes("DEPLOY")) {
+      return "sc_start";
+    } else if (
+      message.includes("IN THIS LAP") ||
+      message.includes("ENDING") ||
+      message.includes("NOT ACTIVE")
+    ) {
+      return "sc_end";
+    }
+  }
+  return null;
+}
+
+function isTimeInIntervals(
+  time: number,
+  intervals: Array<{ start: number; end: number }>
+) {
+  return intervals.some((interval) => time >= interval.start && time <= interval.end);
+}
+
+function computeNextScLabel(
+  lap: number,
+  lapEndTimes: Map<number, number>,
+  totalLaps: number,
+  scDeployTimes: number[],
+  sessionEndMs: number
+) {
+  if (lap >= totalLaps) {
+    return 0;
+  }
+  const currentEnd = lapEndTimes.get(lap) ?? Date.now();
+  const nextEnd = lapEndTimes.get(lap + 1) ?? sessionEndMs;
+  return scDeployTimes.some(
+    (time) => time > currentEnd && time <= nextEnd
+  )
+    ? 1
+    : 0;
+}
+
+function buildRaceId(session: SessionRecord) {
+  const circuit = (session.circuit_short_name ?? session.meeting_name ?? "").replace(
+    /\s+/g,
+    "_"
+  );
+  const normalizedName = (session.session_name ?? "").toLowerCase();
+  const isSprint =
+    session.session_type.toLowerCase().includes("sprint") ||
+    normalizedName.includes("sprint");
+  const suffix = isSprint ? "S" : "R";
+  const base = circuit || String(session.meeting_key);
+  return `${session.year}_${base}_${suffix}`.toUpperCase();
+}
+
+function csvEscape(value: unknown) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  const str = String(value);
+  if (/[,"\n]/.test(str)) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+}
+
+function formatNumber(value: number | null | undefined) {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return "";
+  }
+  return Number(value.toFixed(3));
+}
+
+function parseArgs(argv: string[]): CliOptions {
+  let outputPath = path.resolve("race_state.csv");
+  const years = new Set<number>([2023, 2024, 2025]);
+  let customYears = false;
+
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if ((arg === "--output" || arg === "-o") && argv[i + 1]) {
+      outputPath = path.resolve(argv[i + 1]);
+      i += 1;
+    } else if (arg === "--year" && argv[i + 1]) {
+      if (!customYears) {
+        years.clear();
+        customYears = true;
+      }
+      years.add(Number(argv[i + 1]));
+      i += 1;
+    } else if (/^--year=/.test(arg)) {
+      if (!customYears) {
+        years.clear();
+        customYears = true;
+      }
+      years.add(Number(arg.split("=")[1]));
+    }
+  }
+
+  return { outputPath, years: Array.from(years).filter((y) => Number.isFinite(y)) };
+}
+
+main().catch((error) => {
+  console.error("[Export] Failed", error);
+  process.exit(1);
+});
