@@ -36,5 +36,11 @@ bun run import-session -- ./session-cache/9693.json.zip
 
 After importing, start the backend and request `/session/<key>`; the API responds with `404` when a session has not been imported.
 
+## Models & datasets
+
+- `models/xgboost_sc_predict.ipynb` – consumes the backend safety-car dataset for model training.
+- `models/jolpica_lap_dataset.ipynb` – builds `models/driver_lap_dataset.csv` from the archived Jolpica dump (static historic data without tyres/weather/SC fields).
+- `models/fastf1_lap_dataset.ipynb` – uses the FastF1 library to download official timing data (laps, weather, track/DRS status) and build an enriched lap dataset with the previously missing fields.
+
 TODO
 -> This loader https://codepen.io/Elvira-Ho/pen/jvmRNK
