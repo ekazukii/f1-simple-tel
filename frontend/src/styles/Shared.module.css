@@ -1,0 +1,158 @@
+.app {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 2rem;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.toolbar h1 {
+  margin: 0.25rem 0 0;
+  font-size: 2.5rem;
+}
+
+.eyebrow {
+  text-transform: uppercase;
+  font-size: 0.8rem;
+  letter-spacing: 0.1em;
+  color: var(--color-muted);
+  margin: 0;
+}
+
+.lead {
+  color: var(--color-muted);
+}
+
+.control-stack {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.control-stack > div {
+  flex: 1 1 240px;
+}
+
+.session-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 220px;
+}
+
+.session-picker label {
+  font-weight: 600;
+}
+
+.session-picker select {
+  min-height: 0;
+  max-height: 56px;
+  height: auto;
+  border-radius: 0.75rem;
+  border: 1px solid #2e3560;
+  background: rgba(255, 255, 255, 0.05);
+  color: inherit;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.95rem;
+}
+
+.session-picker option {
+  background: #0f1120;
+}
+
+.session-picker small {
+  color: #9ea7c8;
+}
+
+.driver-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 160px;
+}
+
+.driver-picker label {
+  font-weight: 600;
+}
+
+.driver-picker input {
+  border-radius: 0.75rem;
+  border: 1px solid #2e3560;
+  background: rgba(255, 255, 255, 0.05);
+  color: inherit;
+  padding: 0.75rem;
+  font-size: 0.95rem;
+}
+
+.driver-picker small {
+  color: #9ea7c8;
+}
+
+.lap-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 180px;
+}
+
+.lap-picker label {
+  font-weight: 600;
+}
+
+.lap-picker select {
+  border-radius: 0.75rem;
+  border: 1px solid #2e3560;
+  background: rgba(255, 255, 255, 0.05);
+  color: inherit;
+  padding: 0.75rem;
+  font-size: 0.95rem;
+}
+
+.lap-picker small {
+  color: #9ea7c8;
+}
+
+.status {
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  font-weight: 500;
+}
+
+.info {
+  background: rgba(42, 157, 244, 0.15);
+  border: 1px solid rgba(42, 157, 244, 0.4);
+}
+
+.error {
+  background: rgba(255, 99, 132, 0.15);
+  border: 1px solid rgba(255, 99, 132, 0.4);
+}
+
+.muted {
+  color: #9ea7c8;
+  margin: 0.25rem 0 0;
+}
+
+.small {
+  font-size: 0.85rem;
+}
+
+@media (max-width: 768px) {
+  .toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .session-picker select {
+    min-height: 100px;
+  }
+}

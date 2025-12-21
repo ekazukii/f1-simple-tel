@@ -1,4 +1,6 @@
 import { useMemo } from 'react';
+import sharedStyles from '../styles/Shared.module.css';
+import styles from '../styles/SessionInsights.module.css';
 import type { OpenF1SessionData } from '../types';
 import { normalizeDriverNumber } from '../utils/telemetry';
 import { getDriverByNumber, getDriverByNumberOnDate } from '../utils/drivers';
@@ -26,6 +28,12 @@ interface LapCompoundPoint {
   duration: number;
   compound: string;
 }
+
+const cx = (...names: string[]) =>
+  names
+    .map((n) => styles[n] || sharedStyles[n])
+    .filter(Boolean)
+    .join(' ');
 
 const COMPOUND_COLORS: Record<string, string> = {
   SOFT: '#ff4d4d',
@@ -67,18 +75,18 @@ export function SessionInsights({ session, activeDriver }: Props) {
   const meta = session.sessionInfo;
 
   return (
-    <section className="insights-panel">
-      <div className="insights-header">
+    <section className={cx('insights-panel')}>
+      <div className={cx('insights-header')}>
         <h3>Race insights</h3>
-        <p className="muted">
+        <p className={cx('muted')}>
           Auto-generated from cached telemetry for {meta?.session_name ?? 'session'} · {meta?.location ?? 'unknown location'}
         </p>
       </div>
 
-      <div className="insights-grid">
-        <div className="insights-card">
+      <div className={cx('insights-grid')}>
+        <div className={cx('insights-card')}>
           <h4>Headlines</h4>
-          <ul className="headline-list">
+          <ul className={cx('headline-list')}>
             <li>
               <strong>{fastestLap ? formatSeconds(fastestLap.duration) : '—'}</strong> fastest lap
               {fastestLap ? ` (${formatDriver(fastestLap.driver, sessionDate)} lap ${fastestLap.lap})` : ''}
@@ -92,31 +100,31 @@ export function SessionInsights({ session, activeDriver }: Props) {
           </ul>
         </div>
 
-        <div className="insights-card">
-          <div className="insights-card-head">
+        <div className={cx('insights-card')}>
+          <div className={cx('insights-card-head')}>
             <h4>Pit lane leaderboard</h4>
-            <p className="muted">Shortest stationary times</p>
+            <p className={cx('muted')}>Shortest stationary times</p>
           </div>
           {pitLeaderboard.items.length ? (
-            <ol className="pit-list">
+            <ol className={cx('pit-list')}>
               {pitLeaderboard.items.map((pit) => (
                 <li key={`${pit.driver}-${pit.lap}`}>
-                  <span className="pit-driver">{formatDriver(pit.driver, sessionDate)}</span>
-                  <span className="pit-duration">{pit.duration.toFixed(1)}s</span>
-                  <span className="pit-lap">Lap {pit.lap}</span>
+                  <span className={cx('pit-driver')}>{formatDriver(pit.driver, sessionDate)}</span>
+                  <span className={cx('pit-duration')}>{pit.duration.toFixed(1)}s</span>
+                  <span className={cx('pit-lap')}>Lap {pit.lap}</span>
                 </li>
               ))}
             </ol>
           ) : (
-            <p className="muted">No pit data available.</p>
+            <p className={cx('muted')}>No pit data available.</p>
           )}
         </div>
 
-        <div className="insights-card full-span">
-          <div className="insights-card-head">
+        <div className={cx('insights-card', 'full-span')}>
+          <div className={cx('insights-card-head')}>
             <div>
               <h4>Lap pace & tyre fade</h4>
-              <p className="muted">Lap time per lap with stint compound bands</p>
+              <p className={cx('muted')}>Lap time per lap with stint compound bands</p>
             </div>
           </div>
           {lapCompoundSeries.length ? (
@@ -126,18 +134,18 @@ export function SessionInsights({ session, activeDriver }: Props) {
               return <LapDegradationChart points={lapCompoundSeries} maxLap={maxForChart} />;
             })()
           ) : (
-            <p className="muted">No lap data available for this driver.</p>
+            <p className={cx('muted')}>No lap data available for this driver.</p>
           )}
         </div>
 
-        <div className="insights-card full-span">
-          <div className="insights-card-head">
+        <div className={cx('insights-card', 'full-span')}>
+          <div className={cx('insights-card-head')}>
             <h4>Stint timeline</h4>
-            <p className="muted">Tyre compounds and lap ranges</p>
-            <div className="compound-legend">
+            <p className={cx('muted')}>Tyre compounds and lap ranges</p>
+            <div className={cx('compound-legend')}>
               {Object.entries(COMPOUND_COLORS).map(([compound, color]) => (
-                <span key={compound} className="legend-item">
-                  <span className="legend-swatch" style={{ backgroundColor: color }} />
+                <span key={compound} className={cx('legend-item')}>
+                  <span className={cx('legend-swatch')} style={{ backgroundColor: color }} />
                   {compound}
                 </span>
               ))}
@@ -320,7 +328,7 @@ function getCompoundColor(compound: string) {
 
 function LapDegradationChart({ points, maxLap }: { points: LapCompoundPoint[]; maxLap: number }) {
   if (!points.length) {
-    return <p className="muted">No lap data available for this driver.</p>;
+    return <p className={cx('muted')}>No lap data available for this driver.</p>;
   }
 
   const width = 920;
@@ -332,7 +340,7 @@ function LapDegradationChart({ points, maxLap }: { points: LapCompoundPoint[]; m
   const sorted = [...points].sort((a, b) => a.lap - b.lap);
   const durations = sorted.map((lap) => lap.duration).sort((a, b) => a - b);
   if (!durations.length) {
-    return <p className="muted">No lap data available for this driver.</p>;
+    return <p className={cx('muted')}>No lap data available for this driver.</p>;
   }
   const minDuration = durations[0];
   const maxDuration = durations[durations.length - 1];
@@ -360,7 +368,7 @@ function LapDegradationChart({ points, maxLap }: { points: LapCompoundPoint[]; m
     .join(' ');
 
   return (
-    <svg className="degradation-chart" width="100%" height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Lap time degradation chart">
+    <svg className={cx('degradation-chart')} width="100%" height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Lap time degradation chart">
       {sorted.map((lap) => {
         const color = getCompoundColor(lap.compound);
         return (
@@ -402,20 +410,20 @@ function LapDegradationChart({ points, maxLap }: { points: LapCompoundPoint[]; m
 
 function StintTimeline({ rows, maxLap }: { rows: TimelineRow[]; maxLap: number }) {
   if (!rows.length) {
-    return <p className="muted">No stint data available.</p>;
+    return <p className={cx('muted')}>No stint data available.</p>;
   }
 
   const safeMaxLap = Math.max(1, maxLap);
 
   return (
-    <div className="stint-timeline">
+    <div className={cx('stint-timeline')}>
       {rows.map((row) => (
-        <div key={row.driver} className="stint-row">
-          <div className="stint-driver" title={formatDriver(row.driver, row.sessionDate)}>
-            <span className="stint-driver-number">#{row.driver}</span>
-            <span className="stint-driver-name">{formatDriverName(row.driver, row.sessionDate)}</span>
+        <div key={row.driver} className={cx('stint-row')}>
+          <div className={cx('stint-driver')} title={formatDriver(row.driver, row.sessionDate)}>
+            <span className={cx('stint-driver-number')}>#{row.driver}</span>
+            <span className={cx('stint-driver-name')}>{formatDriverName(row.driver, row.sessionDate)}</span>
           </div>
-          <div className="stint-bar-track" aria-label={`Stints for driver ${row.driver}`}>
+          <div className={cx('stint-bar-track')} aria-label={`Stints for driver ${row.driver}`}>
             {row.stints.map((stint, index) => {
               const startPct = ((stint.start - 1) / safeMaxLap) * 100;
               const widthPct = ((stint.end - stint.start + 1) / safeMaxLap) * 100;
@@ -424,7 +432,7 @@ function StintTimeline({ rows, maxLap }: { rows: TimelineRow[]; maxLap: number }
               return (
                 <div
                   key={`${stint.driver}-${stint.start}-${index}`}
-                  className="stint-segment"
+                  className={cx('stint-segment')}
                   style={{ left: `${startPct}%`, width: `${widthPct}%`, backgroundColor: color, borderColor: color }}
                   title={`${driverLabel} \u00b7 ${stint.compound} · laps ${stint.start}-${stint.end}`}
                 />
@@ -433,7 +441,7 @@ function StintTimeline({ rows, maxLap }: { rows: TimelineRow[]; maxLap: number }
           </div>
         </div>
       ))}
-      <div className="stint-scale">
+      <div className={cx('stint-scale')}>
         <span>Lap 1</span>
         <span>Lap {safeMaxLap}</span>
       </div>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Select, { type SingleValue, type StylesConfig } from 'react-select';
-import '../App.css';
+import sharedStyles from '../styles/Shared.module.css';
+import styles from '../styles/SessionExplorer.module.css';
 import { TelemetryCanvas } from '../components/TelemetryCanvas';
 import { SessionInsights } from '../components/SessionInsights';
 import { DriverCompare } from '../components/DriverCompare';
@@ -22,6 +23,11 @@ import { buildSessionOptions } from '../utils/sessionCatalog';
 const MAX_DRIVER_POINTS = 1000;
 const DRIVER_MIN = 1;
 const DRIVER_MAX = 99;
+const cx = (...names: string[]) =>
+  names
+    .map((n) => styles[n] || sharedStyles[n])
+    .filter(Boolean)
+    .join(' ');
 
 interface DriverOption {
   value: number;
@@ -247,14 +253,14 @@ function SessionExplorer() {
   );
 
   return (
-    <main className="app">
-      <header className="toolbar">
+    <main className={cx('app')}>
+      <header className={cx('toolbar')}>
         <div>
-          <p className="eyebrow">Formula 1 telemetry</p>
+          <p className={cx('eyebrow')}>Formula 1 telemetry</p>
           <h1>Session explorer</h1>
         </div>
-        <div className="control-stack">
-          <div className="session-picker">
+        <div className={cx('control-stack')}>
+          <div className={cx('session-picker')}>
             <label htmlFor="session-select">Choose sessions</label>
             <select id="session-select" multiple value={selectedSessions} onChange={handleSessionChange}>
               {sessionOptions.map((option) => (
@@ -265,12 +271,12 @@ function SessionExplorer() {
             </select>
             <small>Hold Cmd/Ctrl to select multiple sessions.</small>
           </div>
-          <div className="driver-picker">
+          <div className={cx('driver-picker')}>
             <label htmlFor="driver-input">Driver number</label>
             <Select
               inputId="driver-input"
               classNamePrefix="driver-select"
-              className="driver-select-container"
+              className={cx('driver-select-container')}
               options={driverOptions}
               isClearable
               placeholder="Search driver by number or name"
@@ -281,7 +287,7 @@ function SessionExplorer() {
             />
             <small>Prefer this driver’s telemetry. Type to search or pick from the list.</small>
           </div>
-          <div className="lap-picker">
+          <div className={cx('lap-picker')}>
             <label htmlFor="lap-select">Lap</label>
             <select id="lap-select" value={selectedLap ?? ''} onChange={handleLapChange} disabled={!lapOptions.length}>
               {lapOptions.map((lap) => (
@@ -295,10 +301,10 @@ function SessionExplorer() {
         </div>
       </header>
 
-      {status.error && <div className="status error">{status.error}</div>}
-      {status.loading && <div className="status info">Loading session data…</div>}
+      {status.error && <div className={cx('status', 'error')}>{status.error}</div>}
+      {status.loading && <div className={cx('status', 'info')}>Loading session data…</div>}
 
-      <div className="session-grid">{renderedSessions}</div>
+      <div className={cx('session-grid')}>{renderedSessions}</div>
     </main>
   );
 }
@@ -314,10 +320,10 @@ interface SessionPanelProps {
 function SessionPanel({ sessionKey, data, loading, preferredDriver, selectedLap }: SessionPanelProps) {
   if (!data) {
     return (
-      <section className="session-panel">
+      <section className={cx('session-panel')}>
         <header>
           <h2>Session {sessionKey}</h2>
-          {loading ? <p className="muted">Loading telemetry…</p> : <p className="muted">No data available.</p>}
+          {loading ? <p className={cx('muted')}>Loading telemetry…</p> : <p className={cx('muted')}>No data available.</p>}
         </header>
       </section>
     );
@@ -378,19 +384,19 @@ function SessionPanel({ sessionKey, data, loading, preferredDriver, selectedLap 
   const endDate = formatDate(sessionInfo?.date_end);
 
   return (
-    <section className="session-panel">
+    <section className={cx('session-panel')}>
       <header>
         <h2>
-          {sessionInfo?.session_name ?? 'Session'} <span className="muted">#{sessionInfo?.session_key ?? sessionKey}</span>
+          {sessionInfo?.session_name ?? 'Session'} <span className={cx('muted')}>#{sessionInfo?.session_key ?? sessionKey}</span>
         </h2>
-        <p className="muted">
+        <p className={cx('muted')}>
           {sessionInfo?.location ?? '—'} · {sessionInfo?.country_name ?? ''}
         </p>
-        <p className="muted">
+        <p className={cx('muted')}>
           {startDate} — {endDate}
         </p>
         {lapRange && (
-          <p className="muted">
+          <p className={cx('muted')}>
             Showing lap {effectiveLapNumber} ({formatDate(lapRange.start)} → {lapRange.end ? formatDate(lapRange.end) : 'end of session'})
           </p>
         )}

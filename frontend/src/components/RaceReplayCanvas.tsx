@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import styles from '../styles/RaceReplayer.module.css'
 
 export interface ReplayPoint {
   driver: number
@@ -70,7 +71,8 @@ export function RaceReplayCanvas({ points, bounds, width = defaultWidth, height 
     })
   }, [points, bounds, width, height])
 
-  return <canvas ref={canvasRef} width={width} height={height} className="race-replay-canvas" />
+  const cx = (...names: string[]) => names.map((n) => styles[n]).filter(Boolean).join(' ')
+  return <canvas ref={canvasRef} width={width} height={height} className={cx('race-replay-canvas')} />
 }
 
 export default RaceReplayCanvas

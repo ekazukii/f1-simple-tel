@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import "../App.css";
+import sharedStyles from "../styles/Shared.module.css";
+import styles from "../styles/RaceReplayer.module.css";
 import sessionCatalog from "../data/sessionCatalog.json";
 import type { OpenF1SessionData, RaceControlRecord } from "../types";
 import { fetchSession } from "../api/sessions";
@@ -12,6 +13,11 @@ import { getDriverColor } from "../utils/teamColors";
 import { getDriverByNumberOnDate } from "../utils/drivers";
 
 const SPEED_PRESETS = [0.1, 0.25, 0.5, 1, 2, 4, 10];
+const cx = (...names: string[]) =>
+  names
+    .map((n) => styles[n] || sharedStyles[n])
+    .filter(Boolean)
+    .join(" ");
 
 type StatusState = { loading: boolean; error: string | null };
 
@@ -223,14 +229,14 @@ export function RaceReplayer() {
   );
 
   return (
-    <main className="app race-replayer-page">
-      <header className="toolbar">
+    <main className={cx("app", "race-replayer-page")}>
+      <header className={cx("toolbar")}>
         <div>
-          <p className="eyebrow">Race Replayer</p>
+          <p className={cx("eyebrow")}>Race Replayer</p>
           <h1>Live telemetry playback</h1>
         </div>
-        <div className="control-stack">
-          <div className="session-picker">
+        <div className={cx("control-stack")}>
+          <div className={cx("session-picker")}>
             <label htmlFor="replayer-session">Choose session</label>
             <select
               id="replayer-session"
@@ -247,13 +253,13 @@ export function RaceReplayer() {
         </div>
       </header>
 
-      {status.error && <div className="status error">{status.error}</div>}
+      {status.error && <div className={cx("status", "error")}>{status.error}</div>}
       {session && trackBounds ? (
-        <section className="race-replay-panel">
+        <section className={cx("race-replay-panel")}>
           <RaceReplayCanvas points={replayPoints} bounds={trackBounds} />
-          <div className="race-replay-controls">
-            <div className="playback-controls">
-              <div className="playback-time">
+          <div className={cx("race-replay-controls")}>
+            <div className={cx("playback-controls")}>
+              <div className={cx("playback-time")}>
                 <strong>{durationLabel}</strong>
                 {playbackRange && (
                   <small>
@@ -278,16 +284,16 @@ export function RaceReplayer() {
           </div>
         </section>
       ) : status.loading ? (
-        <section className="race-replay-panel">
-          <div className="race-replay-canvas race-replay-canvas--loading">
+        <section className={cx("race-replay-panel")}>
+          <div className={cx("race-replay-canvas", "race-replay-canvas--loading")}>
             <div
-              className={`race-replay-progress${
+              className={`${cx("race-replay-progress")}${
                 downloadProgress?.progress == null ? " is-indeterminate" : ""
               }`}
               aria-label="Downloading telemetry"
             >
               <div
-                className={`race-replay-progress__bar${
+                className={`${cx("race-replay-progress__bar")}${
                   downloadProgress?.progress == null ? " is-indeterminate" : ""
                 }`}
                 style={
@@ -297,7 +303,7 @@ export function RaceReplayer() {
                 }
               />
             </div>
-            <p className="muted">
+            <p className={cx("muted")}>
               {downloadProgress?.totalBytes
                 ? `Downloading ${formatBytes(downloadProgress.receivedBytes)} / ${formatBytes(downloadProgress.totalBytes)}`
                 : downloadProgress
@@ -307,8 +313,8 @@ export function RaceReplayer() {
           </div>
         </section>
       ) : (
-        <div className="race-replayer__empty">
-          <p className="muted">Select a session to start the replay.</p>
+        <div className={cx("race-replayer__empty")}>
+          <p className={cx("muted")}>Select a session to start the replay.</p>
         </div>
       )}
     </main>

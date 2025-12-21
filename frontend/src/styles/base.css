@@ -1,0 +1,17 @@
+@import "./tokens.css";
+
+:root {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  background: radial-gradient(circle at top, #161b33, var(--color-bg) 60%);
+  min-height: 100vh;
+  color: var(--color-text);
+}

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import styles from '../styles/ReplayPlayer.module.css'
 
 export type ReplayEventType = 'safety-car' | 'virtual-safety-car' | 'green' | 'red'
 
@@ -79,31 +80,37 @@ export default function ReplayPlayer({
     onTimeChange(range.start + next)
   }
 
+  const cx = (...names: string[]) => names.map((n) => styles[n]).filter(Boolean).join(' ')
+
   return (
-    <div className="replay-player">
-      <div className="replay-player__scrubber">
+    <div className={cx('replay-player')}>
+      <div className={cx('replay-player__scrubber')}>
         <button
           type="button"
-          className="replay-player__play"
+          className={cx('replay-player__play')}
           onClick={onTogglePlay}
           disabled={!duration}
           aria-label={isPlaying ? 'Pause replay' : 'Play replay'}
         >
           {isPlaying ? <PauseIcon /> : <PlayIcon />}
         </button>
-        <div className="replay-player__timeline">
-          <div className="replay-player__track" aria-hidden="true">
-            <div className="replay-player__track-line" />
-            <div className="replay-player__progress" style={{ width: `${progress}%` }} />
-            <div className="replay-player__thumb" style={{ left: `${progress}%` }} />
+        <div className={cx('replay-player__timeline')}>
+          <div className={cx('replay-player__track')} aria-hidden="true">
+            <div className={cx('replay-player__track-line')} />
+            <div className={cx('replay-player__progress')} style={{ width: `${progress}%` }} />
+            <div className={cx('replay-player__thumb')} style={{ left: `${progress}%` }} />
             {decoratedEvents.map((event) => (
               <div
                 key={event.id}
-                className={`replay-player__event replay-player__event--${event.type} replay-player__event--${event.alignment}`}
+                className={cx(
+                  'replay-player__event',
+                  `replay-player__event--${event.type}`,
+                  `replay-player__event--${event.alignment}`
+                )}
                 style={{ left: `${event.position}%` }}
               >
-                <span className="replay-player__event-marker" />
-                <span className="replay-player__event-label">{event.label}</span>
+                <span className={cx('replay-player__event-marker')} />
+                <span className={cx('replay-player__event-label')}>{event.label}</span>
               </div>
             ))}
           </div>
@@ -114,28 +121,28 @@ export default function ReplayPlayer({
             step={16}
             value={relativeTime}
             onChange={(event) => handleTimeChange(Number(event.target.value))}
-            className="replay-player__range-input"
+            className={cx('replay-player__range-input')}
             aria-label="Replay position"
             disabled={!duration}
           />
         </div>
-        <div className="replay-player__speed" ref={selectRef}>
+        <div className={cx('replay-player__speed')} ref={selectRef}>
           <button
             type="button"
-            className={`replay-player__speed-button${speedDropdownOpen ? ' is-open' : ''}`}
+            className={`${cx('replay-player__speed-button')}${speedDropdownOpen ? ' is-open' : ''}`}
             onClick={() => setSpeedDropdownOpen((open) => !open)}
           >
             {speed}
-            <span className="replay-player__speed-unit">×</span>
-            <span aria-hidden className="replay-player__speed-caret" />
+            <span className={cx('replay-player__speed-unit')}>×</span>
+            <span aria-hidden className={cx('replay-player__speed-caret')} />
           </button>
           {speedDropdownOpen && (
-            <ul className="replay-player__speed-options">
+            <ul className={cx('replay-player__speed-options')}>
               {speedOptions.map((option) => (
                 <li key={option}>
                   <button
                     type="button"
-                    className={`replay-player__speed-option${option === speed ? ' is-active' : ''}`}
+                    className={`${cx('replay-player__speed-option')}${option === speed ? ' is-active' : ''}`}
                     onClick={() => handleSpeedChange(option)}
                   >
                     {option}×

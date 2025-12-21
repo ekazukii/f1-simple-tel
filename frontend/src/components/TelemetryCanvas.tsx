@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
+import styles from "../styles/TelemetryCanvas.module.css";
 import type { TelemetrySample } from "../types";
 
 interface Props {
@@ -22,6 +23,7 @@ export function TelemetryCanvas({
   height = fallbackHeight,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const cx = (...names: string[]) => names.map((n) => styles[n]).filter(Boolean).join(" ");
 
   const canvasPoints = useMemo(() => projectPoints(points), [points]);
 
@@ -100,12 +102,12 @@ export function TelemetryCanvas({
   }, [canvasPoints, width, height]);
 
   return (
-    <div className="telemetry-wrapper">
+    <div className={cx("telemetry-wrapper")}>
       <canvas
         ref={canvasRef}
         width={width}
         height={height}
-        className="telemetry-canvas"
+        className={cx("telemetry-canvas")}
       />
     </div>
   );

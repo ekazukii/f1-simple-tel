@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import styles from '../styles/TyreUsageTable.module.css';
 import type { TyreUsageMatrix } from '../utils/telemetry';
 
 interface Props {
@@ -10,6 +11,7 @@ const COMPOUND_COLORS: Record<string, string> = {
   MEDIUM: '#f6c343',
   HARD: '#f9f9f9'
 };
+const cx = (...names: string[]) => names.map((n) => styles[n]).filter(Boolean).join(' ');
 
 export function TyreUsageTable({ matrix }: Props) {
   const hasData = Boolean(matrix && matrix.drivers.length && matrix.lapNumbers.length);
@@ -26,8 +28,8 @@ export function TyreUsageTable({ matrix }: Props) {
   }
 
   return (
-    <div className="tyre-table-wrapper">
-      <table className="tyre-table">
+    <div className={cx('tyre-table-wrapper')}>
+      <table className={cx('tyre-table')}>
         <thead>
           <tr>
             <th>Driver</th>
@@ -46,7 +48,7 @@ export function TyreUsageTable({ matrix }: Props) {
                 return (
                   <td key={`${driver}-${lap}`}>
                     <span
-                      className="tyre-cell"
+                      className={cx('tyre-cell')}
                       style={{ backgroundColor: color, borderColor: color === 'transparent' ? '#2e3560' : color }}
                       title={compound ? `${compound} lap ${lap}` : `No data lap ${lap}`}
                     />

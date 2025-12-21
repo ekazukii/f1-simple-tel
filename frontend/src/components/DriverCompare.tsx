@@ -1,4 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
+import sharedStyles from '../styles/Shared.module.css';
+import styles from '../styles/DriverCompare.module.css';
 import type { OpenF1SessionData } from '../types';
 import {
   buildLapDetails,
@@ -14,6 +16,12 @@ interface Props {
   selectedLap: number | null;
   preferredDriver: number | null;
 }
+
+const cx = (...names: string[]) =>
+  names
+    .map((n) => styles[n] || sharedStyles[n])
+    .filter(Boolean)
+    .join(' ');
 
 interface SamplePoint {
   t: number; // seconds since lap start
@@ -107,13 +115,13 @@ export function DriverCompare({ session, selectedLap, preferredDriver }: Props) 
   };
 
   return (
-    <section className="compare-panel">
-      <div className="compare-head">
+    <section className={cx('compare-panel')}>
+      <div className={cx('compare-head')}>
         <div>
           <h3>Driver vs driver</h3>
-          <p className="muted">Lap {lapLabel} telemetry overlay (speed, throttle, brake)</p>
+          <p className={cx('muted')}>Lap {lapLabel} telemetry overlay (speed, throttle, brake)</p>
         </div>
-        <div className="compare-pickers">
+        <div className={cx('compare-pickers')}>
           <label>
             Driver A
             <select value={driverA ?? ''} onChange={(e) => setDriverA(toNumberOrNull(e.target.value))}>
@@ -138,7 +146,7 @@ export function DriverCompare({ session, selectedLap, preferredDriver }: Props) 
       </div>
 
       {!mergedSeries.length ? (
-        <p className="muted">No overlapping telemetry found for the selected lap.</p>
+        <p className={cx('muted')}>No overlapping telemetry found for the selected lap.</p>
       ) : (
         <>
           <SegmentHeatmap segments={segmentDeltas} lap={lapLabel} />
@@ -390,8 +398,8 @@ function TelemetryChart({ points, maxSpeed }: { points: ResampledPoint[]; maxSpe
   const brakePathB = buildPath(points, (p) => [toX(p.progress), toThrottleY(Math.min(p.brakeB, 100))]);
 
   return (
-    <div className="compare-chart-wrapper">
-      <svg className="compare-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Driver overlay chart">
+    <div className={cx('compare-chart-wrapper')}>
+      <svg className={cx('compare-chart')} viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Driver overlay chart">
         {buildDeltaBands(points, toX, height, padding)}
 
         <path d={speedPathA} fill="none" stroke="#7ad7ff" strokeWidth={2.2} strokeLinecap="round" />
@@ -403,16 +411,16 @@ function TelemetryChart({ points, maxSpeed }: { points: ResampledPoint[]; maxSpe
         <path d={brakePathA} fill="none" stroke="rgba(255, 99, 132, 0.8)" strokeWidth={1.4} strokeLinecap="round" />
         <path d={brakePathB} fill="none" stroke="rgba(255, 140, 70, 0.8)" strokeWidth={1.4} strokeLinecap="round" />
 
-        <g className="compare-axis">
+        <g className={cx('compare-axis')}>
           <text x={padding} y={padding + 12} fill="#9ea7c8" fontSize="11">Speed (km/h)</text>
           <text x={padding} y={throttleBase - throttleHeight - 4} fill="#9ea7c8" fontSize="11">Throttle / Brake (%)</text>
         </g>
       </svg>
-      <div className="compare-legend">
-        <span className="legend-item"><span className="legend-swatch" style={{ backgroundColor: '#7ad7ff' }} />Driver A speed</span>
-        <span className="legend-item"><span className="legend-swatch" style={{ backgroundColor: '#f6c343' }} />Driver B speed</span>
-        <span className="legend-item"><span className="legend-swatch" style={{ backgroundColor: '#ff6384' }} />Brake</span>
-        <span className="legend-item"><span className="legend-swatch" style={{ backgroundColor: '#7ad7ff', opacity: 0.6 }} />Throttle</span>
+      <div className={cx('compare-legend')}>
+        <span className={cx('legend-item')}><span className={cx('legend-swatch')} style={{ backgroundColor: '#7ad7ff' }} />Driver A speed</span>
+        <span className={cx('legend-item')}><span className={cx('legend-swatch')} style={{ backgroundColor: '#f6c343' }} />Driver B speed</span>
+        <span className={cx('legend-item')}><span className={cx('legend-swatch')} style={{ backgroundColor: '#ff6384' }} />Brake</span>
+        <span className={cx('legend-item')}><span className={cx('legend-swatch')} style={{ backgroundColor: '#7ad7ff', opacity: 0.6 }} />Throttle</span>
       </div>
     </div>
   );
@@ -439,17 +447,17 @@ function buildDeltaBands(
       <rect key={`band-${i}`} x={x1} y={padding} width={Math.max(0, x2 - x1)} height={baseY - padding} fill={color} />
     );
   }
-  return <g className="delta-bands">{bands}</g>;
+  return <g className={cx('delta-bands')}>{bands}</g>;
 }
 
 function SegmentHeatmap({ segments, lap }: { segments: SegmentDelta[]; lap: number | string }) {
   if (!segments.length) {
-    return <p className="muted small">No segment timing available for lap {lap}.</p>;
+    return <p className={cx('muted', 'small')}>No segment timing available for lap {lap}.</p>;
   }
 
   const valid = segments.filter((seg) => Number.isFinite(seg.durationA) || Number.isFinite(seg.durationB));
   if (!valid.length) {
-    return <p className="muted small">No segment timing available for lap {lap}.</p>;
+    return <p className={cx('muted', 'small')}>No segment timing available for lap {lap}.</p>;
   }
 
   const maxDuration = valid.reduce((max, seg) => {
@@ -458,12 +466,12 @@ function SegmentHeatmap({ segments, lap }: { segments: SegmentDelta[]; lap: numb
   }, 0);
 
   return (
-    <div className="segment-heatmap">
-      <div className="segment-legend">
-        <span className="legend-item"><span className="legend-swatch" style={{ backgroundColor: 'rgba(90, 199, 255, 0.35)' }} />Driver A faster</span>
-        <span className="legend-item"><span className="legend-swatch" style={{ backgroundColor: 'rgba(246, 99, 132, 0.35)' }} />Driver B faster</span>
+    <div className={cx('segment-heatmap')}>
+      <div className={cx('segment-legend')}>
+        <span className={cx('legend-item')}><span className={cx('legend-swatch')} style={{ backgroundColor: 'rgba(90, 199, 255, 0.35)' }} />Driver A faster</span>
+        <span className={cx('legend-item')}><span className={cx('legend-swatch')} style={{ backgroundColor: 'rgba(246, 99, 132, 0.35)' }} />Driver B faster</span>
       </div>
-      <div className="segment-grid">
+      <div className={cx('segment-grid')}>
         {segments.map((seg) => {
           const hasA = Number.isFinite(seg.durationA ?? NaN);
           const hasB = Number.isFinite(seg.durationB ?? NaN);
@@ -480,11 +488,11 @@ function SegmentHeatmap({ segments, lap }: { segments: SegmentDelta[]; lap: numb
           return (
             <div
               key={seg.index}
-              className="segment-cell"
+              className={cx('segment-cell')}
               title={`Segment ${seg.index} · A: ${labelA} · B: ${labelB} · Δ: ${deltaLabel}`}
             >
-              <div className="segment-bar" style={{ width: `${Math.max(12, widthPct)}%`, backgroundColor: color }} />
-              <div className="segment-label">{seg.index}</div>
+              <div className={cx('segment-bar')} style={{ width: `${Math.max(12, widthPct)}%`, backgroundColor: color }} />
+              <div className={cx('segment-label')}>{seg.index}</div>
             </div>
           );
         })}
@@ -505,12 +513,12 @@ function buildPath(points: ResampledPoint[], accessor: (p: ResampledPoint) => [n
 
 function BrakingTable({ snapshots }: { snapshots: BrakingSnapshot[] }) {
   if (!snapshots.length) {
-    return <p className="muted small">No heavy braking zones detected on this lap.</p>;
+    return <p className={cx('muted', 'small')}>No heavy braking zones detected on this lap.</p>;
   }
 
   return (
-    <div className="brake-table-wrapper">
-      <table className="brake-table">
+    <div className={cx('brake-table-wrapper')}>
+      <table className={cx('brake-table')}>
         <thead>
           <tr>
             <th>Lap %</th>
@@ -526,7 +534,7 @@ function BrakingTable({ snapshots }: { snapshots: BrakingSnapshot[] }) {
             <tr key={`brake-${idx}`}>
               <td>{Math.round(snap.progress * 100)}%</td>
               <td>
-                <span className={`pill ${snap.brakeLead === 'A' ? 'pill-a' : 'pill-b'}`}>
+                <span className={`${cx('pill')} ${cx(snap.brakeLead === 'A' ? 'pill-a' : 'pill-b')}`}>
                   {snap.brakeLead === 'A' ? 'Driver A' : 'Driver B'}
                 </span>
               </td>

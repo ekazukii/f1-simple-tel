@@ -1,0 +1,60 @@
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-shell__content {
+  flex: 1;
+}
+
+.app-shell__content--full {
+  padding: 0;
+}
+
+.app-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 2rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(8, 11, 25, 0.85);
+  backdrop-filter: blur(12px);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.app-nav__brand {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.app-nav__brand strong {
+  font-size: 1.25rem;
+}
+
+.app-nav__links {
+  display: flex;
+  gap: 1rem;
+}
+
+.app-nav__link {
+  text-decoration: none;
+  color: #c7cee6;
+  font-weight: 600;
+  padding: 0.4rem 0.75rem;
+  border-radius: 999px;
+  transition: background 0.2s, color 0.2s;
+}
+
+.app-nav__link:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+}
+
+.app-nav__link--active {
+  background: #4563ff;
+  color: #ffffff;
+}

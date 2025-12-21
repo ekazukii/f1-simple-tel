@@ -1,10 +1,18 @@
 import { useEffect, useRef } from "react";
+import { NavLink } from "react-router-dom";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
+import sharedStyles from "../styles/Shared.module.css";
+import styles from "../styles/GaragePortal.module.css";
 
 const MODEL_URL = "/f1_garage2_compress.glb";
+const cx = (...names: string[]) =>
+  names
+    .map((n) => styles[n] || sharedStyles[n])
+    .filter(Boolean)
+    .join(" ");
 
 function GaragePortal() {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -82,8 +90,8 @@ function GaragePortal() {
       .crossVectors(upDir, frontDir)
       .normalize();
     const lateralOffset = -0.04;
-    let behindTargetOffset = 0.2;
-    let cameraEndOffset = -0.02;
+    let behindTargetOffset = 0.8;
+    let cameraEndOffset = -0.1;
 
     const lookMat = new THREE.Matrix4();
     const targetQuat = new THREE.Quaternion();
@@ -271,7 +279,7 @@ function GaragePortal() {
         const p3 = drsPos
           .clone()
           .addScaledVector(behindDir, cameraEndOffset * carMaxDim)
-          .addScaledVector(upDir, -0.02 * carMaxDim);
+          .addScaledVector(upDir, -0.01 * carMaxDim);
         curve = new THREE.CatmullRomCurve3(
           [p0, p1, p2, p25, p3],
           false,
@@ -335,7 +343,7 @@ function GaragePortal() {
 
       if (drsFlap && baseRot) {
         const pDRS = easeInOut(remap01(p, 0.45, 0.85));
-        const maxAngle = 0.65;
+        const maxAngle = 0.85;
         drsFlap.rotation.set(baseRot.x, baseRot.y + maxAngle * pDRS, baseRot.z);
       }
 
@@ -376,41 +384,73 @@ function GaragePortal() {
   }, []);
 
   return (
-    <div className="garage-page">
-      <div className="garage-scrollArea" />
-      <div className="garage-hero">
-        <div className="garage-hero__canvas" ref={containerRef} />
+    <div className={cx("garage-page")}>
+      <div className={cx("garage-scrollArea")} />
+      <div className={cx("garage-hero")}>
+        <div className={cx("garage-hero__canvas")} ref={containerRef} />
       </div>
-      <div className="garage-scroll-hint">
-        <span className="hint-arrow">↓</span>
+      <nav className={cx("garage-nav")}>
+        <NavLink
+          to="/"
+          end
+          className={({ isActive }) =>
+            cx("garage-nav__link", isActive ? "garage-nav__link--active" : "")
+          }
+        >
+          Session Explorer
+        </NavLink>
+        <NavLink
+          to="/replayer"
+          className={({ isActive }) =>
+            cx("garage-nav__link", isActive ? "garage-nav__link--active" : "")
+          }
+        >
+          Race Replayer
+        </NavLink>
+        <NavLink
+          to="/garage"
+          className={({ isActive }) =>
+            cx("garage-nav__link", isActive ? "garage-nav__link--active" : "")
+          }
+        >
+          Garage Portal
+        </NavLink>
+      </nav>
+      <div className={cx("garage-scroll-hint")}>
+        <span className={cx("hint-arrow")}>↓</span>
         <span>Scroll to enter</span>
       </div>
-      <main className="garage-main">
-        <div className="garage-card">
+      <main className={cx("garage-main")}>
+        <div className={cx("garage-card")}>
           <h1>Garage Portal</h1>
-          <p className="lead">
-            The page lives beneath the canvas — you glimpse it through the DRS portal, then the canvas fades away near
-            the end of the scroll.
+          <p className={cx("lead")}>
+            The page lives beneath the canvas — you glimpse it through the DRS
+            portal, then the canvas fades away near the end of the scroll.
           </p>
         </div>
-        <div className="garage-card">
+        <div className={cx("garage-card")}>
           <h2>What you’re seeing</h2>
           <p>
             The 3D scene is loaded lazily from the GLTF model{" "}
-            <code>f1_garage2_compress.glb</code> (DRACO-compressed). Camera position interpolates with scroll, and
-            lights/PMREM give a clean studio look.
+            <code>f1_garage2_compress.glb</code> (DRACO-compressed). Camera
+            position interpolates with scroll, and lights/PMREM give a clean
+            studio look.
           </p>
         </div>
-        <div className="garage-card">
+        <div className={cx("garage-card")}>
           <h2>How to extend</h2>
           <p>
-            Replace the GLB with any car/garage, or hook in live telemetry to drive camera targets. The stencil portal
-            keeps HTML visible only through the flap until the fade finishes.
+            Replace the GLB with any car/garage, or hook in live telemetry to
+            drive camera targets. The stencil portal keeps HTML visible only
+            through the flap until the fade finishes.
           </p>
         </div>
-        <div className="garage-card">
+        <div className={cx("garage-card")}>
           <h2>Next steps</h2>
-          <p>Use this portal to intro your dashboards: the HTML shows through the flap until the canvas fully fades.</p>
+          <p>
+            Use this portal to intro your dashboards: the HTML shows through the
+            flap until the canvas fully fades.
+          </p>
         </div>
       </main>
     </div>

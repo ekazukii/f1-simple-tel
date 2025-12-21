@@ -44,3 +44,6 @@ After importing, start the backend and request `/session/<key>`; the API respond
 
 TODO
 -> This loader https://codepen.io/Elvira-Ho/pen/jvmRNK
+-> Display the track layout in race replayer
+-> Remove dnf car from the race (when stop moving)
+-> Make the race replayer streaming

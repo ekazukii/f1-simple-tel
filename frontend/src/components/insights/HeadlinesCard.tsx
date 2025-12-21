@@ -1,5 +1,8 @@
 import type { LapSample } from './types';
 import { formatDriver, formatSeconds } from './shared';
+import styles from '../../styles/SessionInsights.module.css';
+
+const cx = (...names: string[]) => names.map((n) => styles[n]).filter(Boolean).join(' ');
 
 interface Props {
   fastestLap: LapSample | null;
@@ -19,9 +22,9 @@ export function HeadlinesCard({
   quickestPitText
 }: Props) {
   return (
-    <div className="insights-card">
+    <div className={cx('insights-card')}>
       <h4>Headlines</h4>
-      <ul className="headline-list">
+      <ul className={cx('headline-list')}>
         <li>
           <strong>{fastestLap ? formatSeconds(fastestLap.duration) : '—'}</strong> fastest lap
           {fastestLap ? ` (${formatDriver(fastestLap.driver, sessionDate)} lap ${fastestLap.lap})` : ''}

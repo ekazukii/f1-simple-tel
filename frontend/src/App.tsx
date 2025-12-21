@@ -1,5 +1,7 @@
 import { BrowserRouter, NavLink, Route, Routes, useLocation } from 'react-router-dom'
-import './App.css'
+import appStyles from './styles/AppShell.module.css'
+import sharedStyles from './styles/Shared.module.css'
+import './styles/base.css'
 import SessionExplorer from './pages/SessionExplorer'
 import RaceReplayer from './pages/RaceReplayer'
 import GaragePortal from './pages/GaragePortal'
@@ -7,35 +9,41 @@ import GaragePortal from './pages/GaragePortal'
 function AppShell() {
   const location = useLocation()
   const isGarage = location.pathname.startsWith('/garage')
+  const styles = { ...sharedStyles, ...appStyles }
+  const cx = (...names: string[]) => names.map((n) => styles[n]).filter(Boolean).join(' ')
 
   return (
-    <div className="app-shell">
+    <div className={cx('app-shell')}>
       {!isGarage && (
-        <nav className="app-nav">
-          <div className="app-nav__brand">
-            <span className="eyebrow">F1 telemetry</span>
+        <nav className={cx('app-nav')}>
+          <div className={cx('app-nav__brand')}>
+            <span className={cx('eyebrow')}>F1 telemetry</span>
             <strong>Session Studio</strong>
           </div>
-          <div className="app-nav__links">
-            <NavLink to="/" end className={({ isActive }) => (isActive ? 'app-nav__link app-nav__link--active' : 'app-nav__link')}>
+          <div className={cx('app-nav__links')}>
+            <NavLink
+              to="/"
+              end
+              className={({ isActive }) => cx('app-nav__link', isActive ? 'app-nav__link--active' : '')}
+            >
               Session Explorer
             </NavLink>
             <NavLink
               to="/replayer"
-              className={({ isActive }) => (isActive ? 'app-nav__link app-nav__link--active' : 'app-nav__link')}
+              className={({ isActive }) => cx('app-nav__link', isActive ? 'app-nav__link--active' : '')}
             >
               Race Replayer
             </NavLink>
             <NavLink
               to="/garage"
-              className={({ isActive }) => (isActive ? 'app-nav__link app-nav__link--active' : 'app-nav__link')}
+              className={({ isActive }) => cx('app-nav__link', isActive ? 'app-nav__link--active' : '')}
             >
               Garage Portal
             </NavLink>
           </div>
         </nav>
       )}
-      <div className={isGarage ? 'app-shell__content app-shell__content--full' : 'app-shell__content'}>
+      <div className={isGarage ? cx('app-shell__content', 'app-shell__content--full') : cx('app-shell__content')}>
         <Routes>
           <Route path="/" element={<SessionExplorer />} />
           <Route path="/replayer" element={<RaceReplayer />} />

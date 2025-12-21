@@ -1,9 +1,17 @@
 import { getCompoundColor } from './shared';
 import type { LapCompoundPoint } from './types';
+import sharedStyles from '../../styles/Shared.module.css';
+import styles from '../../styles/SessionInsights.module.css';
+
+const cx = (...names: string[]) =>
+  names
+    .map((n) => styles[n] || sharedStyles[n])
+    .filter(Boolean)
+    .join(' ');
 
 export function LapDegradationChart({ points, maxLap }: { points: LapCompoundPoint[]; maxLap: number }) {
   if (!points.length) {
-    return <p className="muted">No lap data available for this driver.</p>;
+    return <p className={cx('muted')}>No lap data available for this driver.</p>;
   }
 
   const width = 920;
@@ -15,7 +23,7 @@ export function LapDegradationChart({ points, maxLap }: { points: LapCompoundPoi
   const sorted = [...points].sort((a, b) => a.lap - b.lap);
   const durations = sorted.map((lap) => lap.duration).sort((a, b) => a - b);
   if (!durations.length) {
-    return <p className="muted">No lap data available for this driver.</p>;
+    return <p className={cx('muted')}>No lap data available for this driver.</p>;
   }
   const minDuration = durations[0];
   const maxDuration = durations[durations.length - 1];
@@ -43,7 +51,7 @@ export function LapDegradationChart({ points, maxLap }: { points: LapCompoundPoi
     .join(' ');
 
   return (
-    <svg className="degradation-chart" width="100%" height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Lap time degradation chart">
+    <svg className={cx('degradation-chart')} width="100%" height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Lap time degradation chart">
       {sorted.map((lap) => {
         const color = getCompoundColor(lap.compound);
         return (
