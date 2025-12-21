@@ -11,5 +11,8 @@
     "backend:build": "npm --workspace backend run build",
     "frontend:dev": "npm --workspace frontend run dev",
     "frontend:build": "npm --workspace frontend run build"
+  },
+  "devDependencies": {
+    "@types/three": "^0.182.0"
   }
 }

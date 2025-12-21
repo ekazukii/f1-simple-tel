@@ -20,3 +20,4 @@ backend/session-cache/latest.json
 # macOS cruft
 .DS_Store
 models/.fastf1_cache/
+temp/

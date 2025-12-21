@@ -1,12 +1,16 @@
-import { BrowserRouter, NavLink, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import './App.css'
 import SessionExplorer from './pages/SessionExplorer'
 import RaceReplayer from './pages/RaceReplayer'
+import GaragePortal from './pages/GaragePortal'
 
-function App() {
+function AppShell() {
+  const location = useLocation()
+  const isGarage = location.pathname.startsWith('/garage')
+
   return (
-    <BrowserRouter>
-      <div className="app-shell">
+    <div className="app-shell">
+      {!isGarage && (
         <nav className="app-nav">
           <div className="app-nav__brand">
             <span className="eyebrow">F1 telemetry</span>
@@ -22,15 +26,30 @@ function App() {
             >
               Race Replayer
             </NavLink>
+            <NavLink
+              to="/garage"
+              className={({ isActive }) => (isActive ? 'app-nav__link app-nav__link--active' : 'app-nav__link')}
+            >
+              Garage Portal
+            </NavLink>
           </div>
         </nav>
-        <div className="app-shell__content">
-          <Routes>
-            <Route path="/" element={<SessionExplorer />} />
-            <Route path="/replayer" element={<RaceReplayer />} />
-          </Routes>
-        </div>
+      )}
+      <div className={isGarage ? 'app-shell__content app-shell__content--full' : 'app-shell__content'}>
+        <Routes>
+          <Route path="/" element={<SessionExplorer />} />
+          <Route path="/replayer" element={<RaceReplayer />} />
+          <Route path="/garage" element={<GaragePortal />} />
+        </Routes>
       </div>
+    </div>
+  )
+}
+
+function App() {
+  return (
+    <BrowserRouter>
+      <AppShell />
     </BrowserRouter>
   )
 }
