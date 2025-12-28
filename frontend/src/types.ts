@@ -101,3 +101,51 @@ export interface WeatherSample {
   wind_direction: number | null;
   wind_speed: number | null;
 }
+
+export type StrategyEntry = [number, string] | [number, number, string];
+
+export interface StrategyComparisonInput {
+  paths?: {
+    base_dir?: string;
+    bundle_path?: string;
+    data_path?: string;
+    overtake_path?: string;
+    dnf_path?: string;
+    safety_path?: string;
+  };
+  options?: {
+    seed?: number;
+    noise_scale?: number;
+    stream_progress?: boolean;
+  };
+  strategy: {
+    strategy_a_global: StrategyEntry[];
+    strategy_b_global: StrategyEntry[];
+    strategy_a_driver?: Record<string, StrategyEntry[]>;
+    strategy_b_driver?: Record<string, StrategyEntry[]>;
+    num_runs_compare?: number;
+    race_length?: number;
+    update_every?: number;
+    grid?: string[];
+    circuit_id?: string;
+    year?: number;
+    safety_car_laps?: number[] | null;
+    rain_laps?: number[] | null;
+  };
+}
+
+export interface StrategyComparisonOutput {
+  meta: Record<string, unknown>;
+  strategy_comparison: {
+    summary_comp_df: Array<Record<string, unknown>>;
+    avg_finish: Array<Record<string, unknown>>;
+  };
+}
+
+export type StrategyComparisonEvent =
+  | { event: 'start'; mode: 'strategy_comparison'; total_runs: number }
+  | { event: 'progress'; run: number; total_runs: number; wins?: Record<string, number> }
+  | { event: 'result'; data: StrategyComparisonOutput }
+  | { event: 'stderr'; message: string }
+  | { event: 'error'; message: string }
+  | { event: 'log'; message: string };

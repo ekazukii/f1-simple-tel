@@ -5,6 +5,7 @@ import './styles/base.css'
 import SessionExplorer from './pages/SessionExplorer'
 import RaceReplayer from './pages/RaceReplayer'
 import GaragePortal from './pages/GaragePortal'
+import StrategySimulator from './pages/StrategySimulator'
 
 function AppShell() {
   const location = useLocation()
@@ -40,6 +41,12 @@ function AppShell() {
             >
               Garage Portal
             </NavLink>
+            <NavLink
+              to="/strategy"
+              className={({ isActive }) => cx('app-nav__link', isActive ? 'app-nav__link--active' : '')}
+            >
+              Strategy Lab
+            </NavLink>
           </div>
         </nav>
       )}
@@ -48,6 +55,7 @@ function AppShell() {
           <Route path="/" element={<SessionExplorer />} />
           <Route path="/replayer" element={<RaceReplayer />} />
           <Route path="/garage" element={<GaragePortal />} />
+          <Route path="/strategy" element={<StrategySimulator />} />
         </Routes>
       </div>
     </div>

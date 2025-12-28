@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+import argparse
+import json
+from datetime import datetime, timezone
 
 import joblib
 import matplotlib.pyplot as plt
@@ -117,6 +120,7 @@ class MonteCarloSimulator:
         overtake_path=None,
         dnf_path=None,
         safety_path=None,
+        noise_scale=0.5,
         verbose=False,
     ):
         base_dir = Path(base_dir) if base_dir is not None else Path(__file__).resolve().parent.parent
@@ -189,6 +193,7 @@ class MonteCarloSimulator:
         self.noise_sigma_form = float(bundle.get("noise_sigma_form", 0.0))
         self.noise_rho = float(bundle.get("noise_rho", 0.0))
         self.noise_sigma_eta = float(bundle.get("noise_sigma_eta", 0.0))
+        self.noise_scale = max(0.0, float(noise_scale))
 
         self.spline_cols = [f"lap_spline_{i}" for i in range(self.spline.n_features_out_)]
         self.weather_scaled_cols = [c + "_scaled" for c in self.weather_cols]
@@ -599,14 +604,14 @@ class MonteCarloSimulator:
         pit_rng = np.random.default_rng(base_seed + 6)
 
         noise_by_driver = {}
-        if self.noise_sigma_form > 0 or self.noise_sigma_eta > 0:
+        if self.noise_scale > 0 and (self.noise_sigma_form > 0 or self.noise_sigma_eta > 0):
             noise_rng = np.random.default_rng(base_seed + 5)
             for drv in grid_drivers:
-                form = float(noise_rng.normal(0.0, self.noise_sigma_form))
+                form = float(noise_rng.normal(0.0, self.noise_sigma_form * self.noise_scale))
                 eps = 0.0
                 lap_noise = []
                 for _ in range(total_laps):
-                    eps = self.noise_rho * eps + noise_rng.normal(0.0, self.noise_sigma_eta)
+                    eps = self.noise_rho * eps + noise_rng.normal(0.0, self.noise_sigma_eta * self.noise_scale)
                     lap_noise.append(form + eps)
                 noise_by_driver[drv] = lap_noise
 
@@ -997,6 +1002,7 @@ class MonteCarloSimulator:
         safety_car_laps=None,
         rain_laps=None,
         from_notebook=True,
+        progress_callback=None,
     ):
         summary_comp = []
 
@@ -1141,7 +1147,7 @@ class MonteCarloSimulator:
                     custom_sum[label][drv] += drv_stats["sum"].to_numpy()
                     custom_count[label][drv] += drv_stats["count"].to_numpy()
 
-            if from_notebook and ((run + 1) % update_every == 0 or run == num_runs_compare - 1):
+            if (run + 1) % update_every == 0 or run == num_runs_compare - 1:
                 summary_comp_df = pd.DataFrame(summary_comp)
                 wins = summary_comp_df[summary_comp_df["finish_pos"] == 1].groupby("strategy")["driver_id"].count()
                 avg_finish = summary_comp_df.groupby(["driver_id", "strategy"])["finish_pos"].mean().unstack()
@@ -1151,6 +1157,26 @@ class MonteCarloSimulator:
                 dnf_counts = summary_comp_df.groupby(["driver_id", "strategy"])["dnf"].sum().unstack()
                 avg_finish["dnf_A"] = dnf_counts.get("A")
                 avg_finish["dnf_B"] = dnf_counts.get("B")
+                wins_by = (
+                    summary_comp_df[summary_comp_df["finish_pos"] == 1]
+                    .groupby(["driver_id", "strategy"])["finish_pos"]
+                    .count()
+                    .unstack()
+                )
+                wins_a = wins_by.get("A") if wins_by is not None else None
+                wins_b = wins_by.get("B") if wins_by is not None else None
+                avg_finish["wins_A"] = wins_a.reindex(avg_finish.index).fillna(0) if wins_a is not None else 0.0
+                avg_finish["wins_B"] = wins_b.reindex(avg_finish.index).fillna(0) if wins_b is not None else 0.0
+                podiums_by = (
+                    summary_comp_df[summary_comp_df["finish_pos"] <= 3]
+                    .groupby(["driver_id", "strategy"])["finish_pos"]
+                    .count()
+                    .unstack()
+                )
+                podiums_a = podiums_by.get("A") if podiums_by is not None else None
+                podiums_b = podiums_by.get("B") if podiums_by is not None else None
+                avg_finish["podiums_A"] = podiums_a.reindex(avg_finish.index).fillna(0) if podiums_a is not None else 0.0
+                avg_finish["podiums_B"] = podiums_b.reindex(avg_finish.index).fillna(0) if podiums_b is not None else 0.0
                 sc_by_run = summary_comp_df[["run", "strategy", "sc_laps"]].drop_duplicates()
                 runs_a = sc_by_run[sc_by_run["strategy"] == "A"]["run"].nunique()
                 runs_b = sc_by_run[sc_by_run["strategy"] == "B"]["run"].nunique()
@@ -1162,71 +1188,102 @@ class MonteCarloSimulator:
                 pit_count = summary_comp_df.groupby(["driver_id", "strategy"])["pit_loss_count"].sum().unstack()
                 avg_finish["pit_loss_A"] = pit_sum.get("A") / pit_count.get("A")
                 avg_finish["pit_loss_B"] = pit_sum.get("B") / pit_count.get("B")
-                clear_output(wait=True)
-                print(f"Progress: {run + 1}/{num_runs_compare}")
-                print("Wins per strategy:", wins)
-                print("Average finish per driver (A vs B, lower is better):")
-                display(avg_finish.sort_values("delta_B_minus_A"))
 
-                laps_axis = np.arange(1, race_length + 1)
-                fig, ax = plt.subplots(figsize=(10, 4))
-                for label, color in [("A", "#1f77b4"), ("B", "#ff7f0e")]:
-                    avg_lap = lap_sum[label] / np.maximum(lap_count[label], 1)
-                    ax.plot(laps_axis, avg_lap, label=f"Strategy {label}", color=color)
-                ax.set_xlabel("Lap")
-                ax.set_ylabel("Avg lap time (s)")
-                ax.set_title("Average lap time per lap (all drivers, running avg)")
-                ax.legend()
-                plt.show()
+                if from_notebook:
+                    clear_output(wait=True)
+                    print(f"Progress: {run + 1}/{num_runs_compare}")
+                    print("Wins per strategy:", wins)
+                    print("Average finish per driver (A vs B, lower is better):")
+                    display(avg_finish.sort_values("delta_B_minus_A"))
 
-                all_custom_drivers = sorted(set(custom_drivers.get("A", []) + custom_drivers.get("B", [])))
-                for drv in all_custom_drivers:
+                    laps_axis = np.arange(1, race_length + 1)
                     fig, ax = plt.subplots(figsize=(10, 4))
-                    plotted = False
                     for label, color in [("A", "#1f77b4"), ("B", "#ff7f0e")]:
-                        avg_driver = custom_sum[label].get(drv, np.zeros(race_length)) / np.maximum(custom_count[label].get(drv, np.zeros(race_length)), 1)
-                        if np.any(custom_count[label].get(drv, np.zeros(race_length))):
-                            ax.plot(laps_axis, avg_driver, label=f"{drv} Strategy {label}", color=color)
-                        else:
-                            ax.plot(laps_axis, avg_driver, label=f"{drv} Strategy {label}", color=color, alpha=0.25)
-                        plotted = True
-                    if plotted:
-                        ax.set_xlabel("Lap")
-                        ax.set_ylabel("Avg lap time (s)")
-                        ax.set_title(f"Average lap time per lap for {drv} (running avg)")
-                        ax.legend()
-                        plt.show()
+                        avg_lap = lap_sum[label] / np.maximum(lap_count[label], 1)
+                        ax.plot(laps_axis, avg_lap, label=f"Strategy {label}", color=color)
+                    ax.set_xlabel("Lap")
+                    ax.set_ylabel("Avg lap time (s)")
+                    ax.set_title("Average lap time per lap (all drivers, running avg)")
+                    ax.legend()
+                    plt.show()
 
-                for drv in all_custom_drivers:
-                    fig, ax = plt.subplots(figsize=(10, 4))
-                    plotted = False
-                    for label, color in [("A", "#1f77b4"), ("B", "#ff7f0e")]:
-                        pos_sum = driver_pos_sum.get(label, {}).get(drv, np.zeros(race_length))
-                        pos_cnt = driver_pos_count.get(label, {}).get(drv, np.zeros(race_length))
-                        avg_pos = pos_sum / np.maximum(pos_cnt, 1)
-                        if np.any(pos_cnt):
-                            ax.plot(laps_axis, avg_pos, label=f"{drv} Strategy {label}", color=color)
-                        else:
-                            ax.plot(laps_axis, avg_pos, label=f"{drv} Strategy {label}", color=color, alpha=0.25)
-                        plotted = True
-                    if plotted:
-                        ax.set_xlabel("Lap")
-                        ax.set_ylabel("Avg position")
-                        ax.set_title(f"Average position per lap for {drv} (running avg)")
-                        ax.invert_yaxis()
-                        ax.legend()
-                        plt.show()
+                    all_custom_drivers = sorted(set(custom_drivers.get("A", []) + custom_drivers.get("B", [])))
+                    for drv in all_custom_drivers:
+                        fig, ax = plt.subplots(figsize=(10, 4))
+                        plotted = False
+                        for label, color in [("A", "#1f77b4"), ("B", "#ff7f0e")]:
+                            avg_driver = custom_sum[label].get(drv, np.zeros(race_length)) / np.maximum(custom_count[label].get(drv, np.zeros(race_length)), 1)
+                            if np.any(custom_count[label].get(drv, np.zeros(race_length))):
+                                ax.plot(laps_axis, avg_driver, label=f"{drv} Strategy {label}", color=color)
+                            else:
+                                ax.plot(laps_axis, avg_driver, label=f"{drv} Strategy {label}", color=color, alpha=0.25)
+                            plotted = True
+                        if plotted:
+                            ax.set_xlabel("Lap")
+                            ax.set_ylabel("Avg lap time (s)")
+                            ax.set_title(f"Average lap time per lap for {drv} (running avg)")
+                            ax.legend()
+                            plt.show()
+
+                    for drv in all_custom_drivers:
+                        fig, ax = plt.subplots(figsize=(10, 4))
+                        plotted = False
+                        for label, color in [("A", "#1f77b4"), ("B", "#ff7f0e")]:
+                            pos_sum = driver_pos_sum.get(label, {}).get(drv, np.zeros(race_length))
+                            pos_cnt = driver_pos_count.get(label, {}).get(drv, np.zeros(race_length))
+                            avg_pos = pos_sum / np.maximum(pos_cnt, 1)
+                            if np.any(pos_cnt):
+                                ax.plot(laps_axis, avg_pos, label=f"{drv} Strategy {label}", color=color)
+                            else:
+                                ax.plot(laps_axis, avg_pos, label=f"{drv} Strategy {label}", color=color, alpha=0.25)
+                            plotted = True
+                        if plotted:
+                            ax.set_xlabel("Lap")
+                            ax.set_ylabel("Avg position")
+                            ax.set_title(f"Average position per lap for {drv} (running avg)")
+                            ax.invert_yaxis()
+                            ax.legend()
+                            plt.show()
+
+                if progress_callback is not None:
+                    wins_dict = wins.to_dict() if wins is not None else {}
+                    progress_callback({
+                        "event": "progress",
+                        "run": run + 1,
+                        "total_runs": num_runs_compare,
+                        "wins": {k: int(v) for k, v in wins_dict.items()},
+                    })
 
         summary_comp_df = pd.DataFrame(summary_comp)
 
         wins = summary_comp_df[summary_comp_df["finish_pos"] == 1].groupby("strategy")["driver_id"].count()
-        avg_finish = summary_comp_df.groupby(["driver_id", "strategy"])["finish_pos"].mean().unstack()
+        avg_finish = summary_comp_df.groupby(["driver_id", "strategy"])['finish_pos'].mean().unstack()
         avg_finish["delta_B_minus_A"] = avg_finish.get("B", np.nan) - avg_finish.get("A", np.nan)
         avg_finish["avg_lap_time_A"] = [driver_avg_lap("A", drv) for drv in avg_finish.index]
         avg_finish["avg_lap_time_B"] = [driver_avg_lap("B", drv) for drv in avg_finish.index]
-        dnf_counts = summary_comp_df.groupby(["driver_id", "strategy"])["dnf"].sum().unstack()
+        dnf_counts = summary_comp_df.groupby(["driver_id", "strategy"])['dnf'].sum().unstack()
         avg_finish["dnf_A"] = dnf_counts.get("A")
         avg_finish["dnf_B"] = dnf_counts.get("B")
+        wins_by = (
+            summary_comp_df[summary_comp_df["finish_pos"] == 1]
+            .groupby(["driver_id", "strategy"])['finish_pos']
+            .count()
+            .unstack()
+        )
+        wins_a = wins_by.get("A") if wins_by is not None else None
+        wins_b = wins_by.get("B") if wins_by is not None else None
+        avg_finish["wins_A"] = wins_a.reindex(avg_finish.index).fillna(0) if wins_a is not None else 0.0
+        avg_finish["wins_B"] = wins_b.reindex(avg_finish.index).fillna(0) if wins_b is not None else 0.0
+        podiums_by = (
+            summary_comp_df[summary_comp_df["finish_pos"] <= 3]
+            .groupby(["driver_id", "strategy"])['finish_pos']
+            .count()
+            .unstack()
+        )
+        podiums_a = podiums_by.get("A") if podiums_by is not None else None
+        podiums_b = podiums_by.get("B") if podiums_by is not None else None
+        avg_finish["podiums_A"] = podiums_a.reindex(avg_finish.index).fillna(0) if podiums_a is not None else 0.0
+        avg_finish["podiums_B"] = podiums_b.reindex(avg_finish.index).fillna(0) if podiums_b is not None else 0.0
         sc_by_run = summary_comp_df[["run", "strategy", "sc_laps"]].drop_duplicates()
         runs_a = sc_by_run[sc_by_run["strategy"] == "A"]["run"].nunique()
         runs_b = sc_by_run[sc_by_run["strategy"] == "B"]["run"].nunique()
@@ -1235,8 +1292,8 @@ class MonteCarloSimulator:
         avg_finish["sc_laps_A"] = sc_pct_a
         avg_finish["sc_laps_B"] = sc_pct_b
 
-        pit_sum = summary_comp_df.groupby(["driver_id", "strategy"])["pit_loss_sum"].sum().unstack()
-        pit_count = summary_comp_df.groupby(["driver_id", "strategy"])["pit_loss_count"].sum().unstack()
+        pit_sum = summary_comp_df.groupby(["driver_id", "strategy"])['pit_loss_sum'].sum().unstack()
+        pit_count = summary_comp_df.groupby(["driver_id", "strategy"])['pit_loss_count'].sum().unstack()
         avg_finish["pit_loss_A"] = pit_sum.get("A") / pit_count.get("A")
         avg_finish["pit_loss_B"] = pit_sum.get("B") / pit_count.get("B")
 
@@ -1269,4 +1326,112 @@ class MonteCarloSimulator:
         return summary_comp_df, avg_finish
 
 
+
 __all__ = ["MonteCarloSimulator"]
+
+
+def _df_to_records(frame):
+    return json.loads(frame.to_json(orient="records"))
+
+
+def _run_strategy_cli(args):
+    with open(args.input, "r", encoding="utf-8") as f:
+        payload = json.load(f)
+
+    if "strategy" not in payload:
+        raise ValueError("Missing required 'strategy' object in input JSON.")
+
+    paths = payload.get("paths", {})
+    options = payload.get("options", {})
+    strategy = payload["strategy"]
+
+    sim = MonteCarloSimulator(
+        base_dir=paths.get("base_dir"),
+        bundle_path=paths.get("bundle_path"),
+        data_path=paths.get("data_path"),
+        overtake_path=paths.get("overtake_path"),
+        dnf_path=paths.get("dnf_path"),
+        safety_path=paths.get("safety_path"),
+        noise_scale=options.get("noise_scale", 0.5),
+        verbose=False,
+    )
+
+    seed = options.get("seed")
+    if seed is not None:
+        sim.master_rng = np.random.default_rng(int(seed))
+
+    def progress_callback(event):
+        if options.get("stream_progress", False):
+            print(json.dumps(event), flush=True)
+
+    if options.get("stream_progress", False):
+        progress_callback({
+            "event": "start",
+            "mode": "strategy_comparison",
+            "total_runs": int(strategy.get("num_runs_compare", 0) or 0),
+        })
+
+    started_at = datetime.now(timezone.utc).isoformat()
+    summary_comp_df, avg_finish = sim.run_strategy_comparison(
+        strategy_a_global=strategy["strategy_a_global"],
+        strategy_b_global=strategy["strategy_b_global"],
+        strategy_a_driver=strategy.get("strategy_a_driver", {}),
+        strategy_b_driver=strategy.get("strategy_b_driver", {}),
+        num_runs_compare=int(strategy.get("num_runs_compare", 2000)),
+        race_length=int(strategy.get("race_length", 60)),
+        update_every=int(strategy.get("update_every", 20)),
+        circuit_id=strategy.get("circuit_id"),
+        year=strategy.get("year"),
+        grid=strategy.get("grid"),
+        safety_car_laps=strategy.get("safety_car_laps"),
+        rain_laps=strategy.get("rain_laps"),
+        from_notebook=False,
+        progress_callback=progress_callback if options.get("stream_progress", False) else None,
+    )
+    finished_at = datetime.now(timezone.utc).isoformat()
+
+    avg_finish_out = avg_finish.reset_index()
+    output = {
+        "meta": {
+            "mode": "strategy_comparison",
+            "seed": seed,
+            "noise_scale": options.get("noise_scale", 0.5),
+            "started_at": started_at,
+            "finished_at": finished_at,
+        },
+        "strategy_comparison": {
+            "summary_comp_df": _df_to_records(summary_comp_df),
+            "avg_finish": _df_to_records(avg_finish_out),
+        },
+    }
+
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(output, f, indent=2)
+
+    if options.get("stream_progress", False):
+        progress_callback({
+            "event": "done",
+            "output": str(output_path),
+        })
+
+
+def _build_parser():
+    parser = argparse.ArgumentParser(description="Monte Carlo strategy comparison CLI")
+    parser.add_argument("--strategy", action="store_true", help="Run strategy comparison mode.")
+    parser.add_argument("--input", required=True, help="Path to input JSON file.")
+    parser.add_argument("--output", required=True, help="Path to output JSON file.")
+    return parser
+
+
+def main(argv=None):
+    parser = _build_parser()
+    args = parser.parse_args(argv)
+    if not args.strategy:
+        parser.error("--strategy is required for this CLI.")
+    _run_strategy_cli(args)
+
+
+if __name__ == "__main__":
+    main()

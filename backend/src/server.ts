@@ -1,6 +1,10 @@
 import Koa from "koa";
 import Router from "@koa/router";
-import { db, initializeDatabase } from "./database";
+import { spawn } from "child_process";
+import { promises as fs } from "fs";
+import os from "os";
+import path from "path";
+import { initializeDatabase } from "./database";
 
 const DEFAULT_PORT = 4000;
 
@@ -188,6 +192,178 @@ router.get("/session/:key", async (ctx) => {
   }
 });
 
+router.post("/simulation/strategy", async (ctx) => {
+  let body: unknown;
+  try {
+    body = await readJsonBody(ctx);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Invalid JSON";
+    ctx.status = 400;
+    ctx.body = { error: "Invalid JSON payload", detail: message };
+    return;
+  }
+  if (!body || typeof body !== "object") {
+    ctx.status = 400;
+    ctx.body = { error: "Invalid JSON payload" };
+    return;
+  }
+
+  const payload = body as {
+    paths?: Record<string, string>;
+    options?: Record<string, unknown>;
+    strategy?: Record<string, unknown>;
+  };
+
+  if (!payload.strategy) {
+    ctx.status = 400;
+    ctx.body = { error: "Missing strategy configuration" };
+    return;
+  }
+
+  const fileExists = async (candidate: string) => {
+    try {
+      await fs.access(candidate);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const cwd = process.cwd();
+  const repoRoot =
+    process.env.F1STUFF_ROOT ??
+    ((await fileExists(path.join(cwd, "models")))
+      ? cwd
+      : path.resolve(cwd, ".."));
+  const modelsDir = path.join(repoRoot, "models");
+
+  const resolveModelPath = async (fileName: string) => {
+    const primary = path.join(modelsDir, fileName);
+    if (await fileExists(primary)) {
+      return primary;
+    }
+    const nested = path.join(modelsDir, "models", fileName);
+    if (await fileExists(nested)) {
+      return nested;
+    }
+    return primary;
+  };
+
+  const paths = { ...(payload.paths ?? {}) };
+  if (!paths.base_dir) {
+    paths.base_dir = repoRoot;
+  }
+  paths.bundle_path ??= await resolveModelPath("laptime_model_bundle.joblib");
+  paths.data_path ??= await resolveModelPath("fastf1_lap_dataset.csv");
+  paths.overtake_path ??= await resolveModelPath("overtaking_model.joblib");
+  paths.dnf_path ??= await resolveModelPath("dnf_model.joblib");
+  paths.safety_path ??= await resolveModelPath("safety_car_model.joblib");
+
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "f1sim-"));
+  const inputPath = path.join(tempDir, "input.json");
+  const outputPath = path.join(tempDir, "output.json");
+  const inputPayload = {
+    paths,
+    options: payload.options ?? {},
+    strategy: payload.strategy,
+  };
+  await fs.writeFile(inputPath, JSON.stringify(inputPayload, null, 2), "utf-8");
+
+  const scriptPath = path.join(modelsDir, "montecarlo_sim.py");
+  const pythonBin = process.env.PYTHON_BIN ?? "python3";
+  const child = spawn(pythonBin, [
+    scriptPath,
+    "--strategy",
+    "--input",
+    inputPath,
+    "--output",
+    outputPath,
+  ], { cwd: repoRoot });
+
+  ctx.respond = false;
+  ctx.res.writeHead(200, {
+    "Content-Type": "application/x-ndjson",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+    "Access-Control-Allow-Origin": "*",
+  });
+
+  const sendLine = (line: string) => {
+    if (!line.trim()) {
+      return;
+    }
+    ctx.res.write(line.endsWith("\n") ? line : `${line}\n`);
+  };
+
+  let stdoutBuffer = "";
+
+  const cleanup = async () => {
+    try {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    } catch {
+      // ignore cleanup errors
+    }
+  };
+
+  const handleProcessError = (message: string) => {
+    sendLine(JSON.stringify({ event: "error", message }));
+    ctx.res.end();
+    void cleanup();
+  };
+
+  child.stdout.on("data", (chunk) => {
+    stdoutBuffer += chunk.toString();
+    let index = stdoutBuffer.indexOf("\n");
+    while (index !== -1) {
+      const line = stdoutBuffer.slice(0, index);
+      stdoutBuffer = stdoutBuffer.slice(index + 1);
+      sendLine(line);
+      index = stdoutBuffer.indexOf("\n");
+    }
+  });
+
+  child.stderr.on("data", (chunk) => {
+    const message = chunk.toString().trim();
+    if (message) {
+      console.error("[SIM] stderr:", message);
+      sendLine(JSON.stringify({ event: "stderr", message }));
+    }
+  });
+
+  child.on("error", (error) => {
+    console.error("[SIM] spawn error:", error);
+    handleProcessError(error.message);
+  });
+
+  child.on("close", async (code) => {
+    if (stdoutBuffer.trim()) {
+      sendLine(stdoutBuffer.trim());
+    }
+    if (code !== 0) {
+      handleProcessError(`Simulation failed with exit code ${code ?? "unknown"}`);
+      return;
+    }
+    try {
+      const outputText = await fs.readFile(outputPath, "utf-8");
+      const outputData = JSON.parse(outputText);
+      sendLine(JSON.stringify({ event: "result", data: outputData }));
+      ctx.res.end();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      handleProcessError(`Failed to read output: ${message}`);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  ctx.req.on("close", () => {
+    if (!child.killed) {
+      child.kill("SIGTERM");
+    }
+    void cleanup();
+  });
+});
+
 app.use(router.routes());
 app.use(router.allowedMethods());
 
@@ -217,6 +393,32 @@ async function getSessionData(
     resolved.alias ?? requestKey,
     sampleSeconds
   );
+}
+
+async function readJsonBody(ctx: Koa.Context): Promise<unknown> {
+  return await new Promise((resolve, reject) => {
+    let body = "";
+    ctx.req.setEncoding("utf-8");
+    ctx.req.on("data", (chunk) => {
+      body += chunk;
+      if (body.length > 5_000_000) {
+        reject(new Error("Payload too large"));
+        ctx.req.destroy();
+      }
+    });
+    ctx.req.on("end", () => {
+      if (!body.trim()) {
+        resolve(null);
+        return;
+      }
+      try {
+        resolve(JSON.parse(body));
+      } catch (error) {
+        reject(error);
+      }
+    });
+    ctx.req.on("error", (error) => reject(error));
+  });
 }
 
 async function resolveSessionKey(

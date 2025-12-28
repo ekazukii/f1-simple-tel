@@ -1,0 +1,138 @@
+.panel {
+  background: rgba(15, 18, 38, 0.72);
+  border: 1px solid #2e3560;
+  border-radius: 1rem;
+  padding: 1.5rem;
+  display: grid;
+  gap: 1.25rem;
+  box-shadow: 0 24px 50px rgba(5, 8, 20, 0.35);
+}
+
+.panel-title {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.field label {
+  font-weight: 600;
+}
+
+.field input,
+.field textarea {
+  border-radius: 0.75rem;
+  border: 1px solid #2e3560;
+  background: rgba(255, 255, 255, 0.05);
+  color: inherit;
+  padding: 0.75rem;
+  font-size: 0.95rem;
+  font-family: inherit;
+}
+
+.field textarea {
+  min-height: 140px;
+  resize: vertical;
+}
+
+.row {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.button {
+  border: none;
+  border-radius: 999px;
+  padding: 0.75rem 1.5rem;
+  font-weight: 600;
+  color: #0b0b0b;
+  background: linear-gradient(135deg, #f8d44a, #ff8c42);
+  cursor: pointer;
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ghost {
+  border: 1px solid #3a4a86;
+  background: transparent;
+  color: #e7eaf4;
+}
+
+.progress {
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.progress > span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #65d1ff, #4563ff);
+  transition: width 0.3s ease;
+}
+
+.log {
+  font-family: "SFMono-Regular", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  background: rgba(8, 10, 24, 0.8);
+  border: 1px solid #2e3560;
+  border-radius: 0.75rem;
+  padding: 1rem;
+  max-height: 240px;
+  overflow: auto;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.table-wrapper {
+  overflow-x: auto;
+}
+
+.table th,
+.table td {
+  padding: 0.6rem 0.7rem;
+  border-bottom: 1px solid rgba(46, 53, 96, 0.7);
+  text-align: left;
+}
+
+.table th {
+  color: #9ea7c8;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.75rem;
+}
+
+.table td {
+  color: #e7eaf4;
+}
+
+.pill {
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid rgba(69, 99, 255, 0.4);
+  background: rgba(69, 99, 255, 0.12);
+  font-size: 0.75rem;
+}
