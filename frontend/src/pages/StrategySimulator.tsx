@@ -32,9 +32,64 @@ const DEFAULT_DRIVER_STRATEGY = JSON.stringify(
   2
 )
 
-function parseJson<T>(value: string, label: string): T {
+const UPDATE_EVERY = 20
+const NOISE_SCALE = 0.5
+const YEAR_OPTIONS = Array.from({ length: 8 }, (_, idx) => String(2018 + idx))
+
+const CIRCUITS = [
+  { id: 'austin', laps: 56 },
+  { id: 'baku', laps: 51 },
+  { id: 'barcelona', laps: 66 },
+  { id: 'budapest', laps: 70 },
+  { id: 'hockenheim', laps: 64 },
+  { id: 'imola', laps: 63 },
+  { id: 'istanbul', laps: 58 },
+  { id: 'jeddah', laps: 50 },
+  { id: 'las_vegas', laps: 50 },
+  { id: 'le_castellet', laps: 53 },
+  { id: 'lusail', laps: 57 },
+  { id: 'marina_bay', laps: 62 },
+  { id: 'melbourne', laps: 57 },
+  { id: 'mexico_city', laps: 71 },
+  { id: 'miami', laps: 57 },
+  { id: 'miami_gardens', laps: 57 },
+  { id: 'monaco', laps: 78 },
+  { id: 'monte_carlo', laps: 78 },
+  { id: 'montr\u00e9al', laps: 70 },
+  { id: 'monza', laps: 53 },
+  { id: 'mugello', laps: 59 },
+  { id: 'n\u00fcrburgring', laps: 60 },
+  { id: 'portim\u00e3o', laps: 66 },
+  { id: 'sakhir', laps: 57 },
+  { id: 'shanghai', laps: 56 },
+  { id: 'silverstone', laps: 52 },
+  { id: 'singapore', laps: 61 },
+  { id: 'sochi', laps: 53 },
+  { id: 'spa_francorchamps', laps: 44 },
+  { id: 'spielberg', laps: 70 },
+  { id: 'suzuka', laps: 53 },
+  { id: 's\u00e3o_paulo', laps: 71 },
+  { id: 'yas_island', laps: 58 },
+  { id: 'yas_marina', laps: 55 },
+  { id: 'zandvoort', laps: 72 }
+]
+
+const formatCircuitLabel = (value: string) =>
+  value
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+
+function parseOptionalJson<T>(value: string, fallback: T): T {
   if (!value.trim()) {
-    throw new Error(`${label} is required.`)
+    return fallback
+  }
+  return JSON.parse(value) as T
+}
+
+function parseNullableJson<T>(value: string, label: string): T | null {
+  if (!value.trim()) {
+    return null
   }
   try {
     return JSON.parse(value) as T
@@ -42,13 +97,6 @@ function parseJson<T>(value: string, label: string): T {
     const message = error instanceof Error ? error.message : 'Invalid JSON'
     throw new Error(`${label} must be valid JSON. ${message}`)
   }
-}
-
-function parseOptionalJson<T>(value: string, fallback: T): T {
-  if (!value.trim()) {
-    return fallback
-  }
-  return JSON.parse(value) as T
 }
 
 function parseNumberList(value: string): number[] {
@@ -79,14 +127,11 @@ function StrategySimulator() {
   const [strategyADriver, setStrategyADriver] = useState('')
   const [strategyBDriver, setStrategyBDriver] = useState(DEFAULT_DRIVER_STRATEGY)
   const [numRuns, setNumRuns] = useState('2000')
-  const [raceLength, setRaceLength] = useState('53')
-  const [updateEvery, setUpdateEvery] = useState('20')
-  const [circuitId, setCircuitId] = useState('monza')
-  const [year, setYear] = useState('2023')
+  const [circuitId, setCircuitId] = useState('monaco')
+  const [year, setYear] = useState('2025')
   const [grid, setGrid] = useState('VER, LEC, HAM, RUS, GAS, HUL')
   const [safetyCarLaps, setSafetyCarLaps] = useState('17, 18')
   const [rainLaps, setRainLaps] = useState('')
-  const [noiseScale, setNoiseScale] = useState('0.5')
 
   const [running, setRunning] = useState(false)
   const [progress, setProgress] = useState(0)
@@ -96,6 +141,10 @@ function StrategySimulator() {
   const [result, setResult] = useState<StrategyComparisonOutput | null>(null)
 
   const abortRef = useRef<AbortController | null>(null)
+  const raceLength = useMemo(() => {
+    const match = CIRCUITS.find((circuit) => circuit.id === circuitId)
+    return match?.laps ?? 53
+  }, [circuitId])
 
   const summaryRows = result?.strategy_comparison.avg_finish ?? []
   const columns = useMemo(() => {
@@ -129,6 +178,15 @@ function StrategySimulator() {
       if (event.wins) {
         setWins(event.wins)
       }
+    } else if (event.event === 'auto_strategies') {
+      const items = event.strategies
+        .map((strat) => {
+          const pits = strat.avg_pit_laps?.length ? `[${strat.avg_pit_laps.join(', ')}]` : '[]'
+          return `${strat.sequence} pits ${pits} prob ${strat.probability}%`
+        })
+        .join(' | ')
+      const header = `Auto strategies ${event.strategy} (${event.circuit_id} ${event.year}): ${items}`
+      setLogLines((prev) => [header, ...prev].slice(0, 40))
     } else if (event.event === 'result') {
       setResult(event.data)
     } else if (event.event === 'error') {
@@ -151,8 +209,8 @@ function StrategySimulator() {
     let driversB: StrategyComparisonInput['strategy']['strategy_b_driver']
 
     try {
-      strategyA = parseJson(strategyAGlobal, 'Strategy A')
-      strategyB = parseJson(strategyBGlobal, 'Strategy B')
+      strategyA = parseNullableJson(strategyAGlobal, 'Strategy A')
+      strategyB = parseNullableJson(strategyBGlobal, 'Strategy B')
       driversA = parseOptionalJson(strategyADriver, {})
       driversB = parseOptionalJson(strategyBDriver, {})
     } catch (err) {
@@ -162,7 +220,7 @@ function StrategySimulator() {
 
     const payload: StrategyComparisonInput = {
       options: {
-        noise_scale: Number(noiseScale) || 0.5,
+        noise_scale: NOISE_SCALE,
         stream_progress: true
       },
       strategy: {
@@ -171,8 +229,8 @@ function StrategySimulator() {
         strategy_a_driver: driversA,
         strategy_b_driver: driversB,
         num_runs_compare: Number(numRuns) || 2000,
-        race_length: Number(raceLength) || 53,
-        update_every: Number(updateEvery) || 20,
+        race_length: raceLength,
+        update_every: UPDATE_EVERY,
         circuit_id: circuitId.trim() || undefined,
         year: Number(year) || undefined,
         grid: grid
@@ -238,24 +296,25 @@ function StrategySimulator() {
             <input value={numRuns} onChange={(event) => setNumRuns(event.target.value)} />
           </div>
           <div className={cx('field')}>
-            <label>Race length</label>
-            <input value={raceLength} onChange={(event) => setRaceLength(event.target.value)} />
-          </div>
-          <div className={cx('field')}>
-            <label>Update every</label>
-            <input value={updateEvery} onChange={(event) => setUpdateEvery(event.target.value)} />
-          </div>
-          <div className={cx('field')}>
-            <label>Noise scale</label>
-            <input value={noiseScale} onChange={(event) => setNoiseScale(event.target.value)} />
-          </div>
-          <div className={cx('field')}>
             <label>Circuit ID</label>
-            <input value={circuitId} onChange={(event) => setCircuitId(event.target.value)} />
+            <select value={circuitId} onChange={(event) => setCircuitId(event.target.value)}>
+              {CIRCUITS.map((circuit) => (
+                <option key={circuit.id} value={circuit.id}>
+                  {formatCircuitLabel(circuit.id)}
+                </option>
+              ))}
+            </select>
+            <small className={cx('muted')}>Race length: {raceLength} laps</small>
           </div>
           <div className={cx('field')}>
             <label>Year</label>
-            <input value={year} onChange={(event) => setYear(event.target.value)} />
+            <select value={year} onChange={(event) => setYear(event.target.value)}>
+              {YEAR_OPTIONS.map((yearOption) => (
+                <option key={yearOption} value={yearOption}>
+                  {yearOption}
+                </option>
+              ))}
+            </select>
           </div>
           <div className={cx('field')}>
             <label>Grid (comma-separated)</label>

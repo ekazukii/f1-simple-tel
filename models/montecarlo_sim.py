@@ -120,6 +120,7 @@ class MonteCarloSimulator:
         overtake_path=None,
         dnf_path=None,
         safety_path=None,
+        strategy_library_path=None,
         noise_scale=0.5,
         verbose=False,
     ):
@@ -194,6 +195,20 @@ class MonteCarloSimulator:
         self.noise_rho = float(bundle.get("noise_rho", 0.0))
         self.noise_sigma_eta = float(bundle.get("noise_sigma_eta", 0.0))
         self.noise_scale = max(0.0, float(noise_scale))
+
+        self.strategy_library = None
+        self.strategy_library_path = None
+        if strategy_library_path is None:
+            primary = base_dir / "models" / "strategy_library.joblib"
+            fallback = base_dir / "models" / "models" / "strategy_library.joblib"
+            strategy_library_path = primary if primary.exists() else fallback
+        if strategy_library_path is not None and Path(strategy_library_path).exists():
+            try:
+                self.strategy_library = joblib.load(strategy_library_path)
+                self.strategy_library_path = str(strategy_library_path)
+            except Exception as exc:
+                if verbose:
+                    print(f"Failed to load strategy library from {strategy_library_path}: {exc}")
 
         self.spline_cols = [f"lap_spline_{i}" for i in range(self.spline.n_features_out_)]
         self.weather_scaled_cols = [c + "_scaled" for c in self.weather_cols]
@@ -341,6 +356,110 @@ class MonteCarloSimulator:
         if not modes.empty:
             return modes.iloc[0]
         return series.iloc[0]
+
+    def _strategy_library_entry(self, circuit_id, year):
+        if not self.strategy_library:
+            return None
+        by_circuit_year = self.strategy_library.get("by_circuit_year", {})
+        try:
+            year_val = int(year)
+        except (TypeError, ValueError):
+            return None
+        direct_key = f"{circuit_id}_{year_val}"
+        direct_entry = by_circuit_year.get(direct_key)
+        if direct_entry is not None:
+            return direct_entry
+        candidates = [
+            entry for entry in by_circuit_year.values()
+            if entry.get("circuit_id") == circuit_id and entry.get("year") is not None
+        ]
+        if not candidates:
+            return None
+        within = [entry for entry in candidates if abs(int(entry["year"]) - year_val) <= 4]
+        if not within:
+            return None
+        within.sort(key=lambda entry: (abs(int(entry["year"]) - year_val), int(entry["year"])))
+        return within[0]
+
+    def _sample_top_strategy(self, entry, rng):
+        strategies = entry.get("top_strategies") if entry else None
+        if not strategies:
+            return None
+        weights = np.array([
+            float(s.get("top_three_share") or s.get("share") or 0.0)
+            for s in strategies
+        ], dtype=float)
+        if not np.isfinite(weights).any() or weights.sum() <= 0:
+            weights = np.ones(len(strategies), dtype=float)
+        weights = weights / weights.sum()
+        rng = rng or self.master_rng
+        idx = int(rng.choice(len(strategies), p=weights))
+        return strategies[idx]
+
+    def _strategy_from_top(self, top_strategy, total_laps):
+        if not top_strategy:
+            return None
+        sequence = top_strategy.get("sequence") or []
+        if not sequence:
+            return None
+        stop_count = max(len(sequence) - 1, 0)
+        avg_pit_laps = list(top_strategy.get("avg_pit_laps") or [])
+        if len(avg_pit_laps) < stop_count:
+            for idx in range(len(avg_pit_laps), stop_count):
+                avg_pit_laps.append(total_laps * (idx + 1) / (stop_count + 1))
+        if len(avg_pit_laps) > stop_count:
+            avg_pit_laps = avg_pit_laps[:stop_count]
+        window_half = 2 if stop_count <= 1 else 1
+        strategy = [(0, sequence[0])]
+        for idx, lap in enumerate(avg_pit_laps):
+            compound = sequence[idx + 1] if idx + 1 < len(sequence) else sequence[-1]
+            if lap is None or not np.isfinite(lap):
+                center = int(round(total_laps * (idx + 1) / (stop_count + 1)))
+            else:
+                center = int(round(float(lap)))
+            start = max(1, center - window_half)
+            end = min(total_laps, center + window_half)
+            strategy.append((start, end, compound))
+        return strategy
+
+    def _auto_strategy_preview(self, entry, circuit_id, year):
+        if not entry:
+            return None
+        strategies = entry.get("top_strategies") or []
+        if not strategies:
+            return None
+        preview = []
+        for strat in strategies[:3]:
+            seq_label = strat.get("sequence_short") or strat.get("sequence_key")
+            avg_pit = []
+            for lap in (strat.get("avg_pit_laps") or []):
+                if lap is None or not np.isfinite(lap):
+                    avg_pit.append(None)
+                else:
+                    avg_pit.append(round(float(lap), 1))
+            prob = strat.get("top_three_share") or 0.0
+            preview.append({
+                "sequence": seq_label,
+                "avg_pit_laps": avg_pit,
+                "probability": round(float(prob) * 100.0, 1),
+            })
+        return {
+            "circuit_id": circuit_id,
+            "year": int(year),
+            "strategies": preview,
+        }
+
+    def _sample_auto_strategy(self, circuit_id, year, total_laps, rng=None):
+        entry = self._strategy_library_entry(circuit_id, year)
+        if entry is None:
+            raise ValueError(f"No strategy library entry for {circuit_id} {year}")
+        top_strategy = self._sample_top_strategy(entry, rng)
+        if top_strategy is None:
+            raise ValueError(f"No top strategies for {circuit_id} {year}")
+        strategy = self._strategy_from_top(top_strategy, total_laps)
+        if not strategy:
+            raise ValueError(f"Failed to build strategy for {circuit_id} {year}")
+        return strategy
 
     def _phase(self, progress):
         if progress < 0.33:
@@ -594,6 +713,7 @@ class MonteCarloSimulator:
         rain_laps=None,
         pit_loss=None,
         rng=None,
+        from_notebook=False,
     ):
         rng = rng or np.random.default_rng()
 
@@ -615,10 +735,27 @@ class MonteCarloSimulator:
                     lap_noise.append(form + eps)
                 noise_by_driver[drv] = lap_noise
 
-        if global_strategy is None:
-            raise ValueError("global_strategy must be provided, e.g. [(20, 'MEDIUM'), (40, 'SOFT')]")
         if driver_strategies is None:
             driver_strategies = {}
+        if global_strategy is None:
+            entry = self._strategy_library_entry(circuit_id, year)
+            preview = self._auto_strategy_preview(entry, circuit_id, year)
+            if from_notebook and preview is not None:
+                print(f"Auto strategies ({circuit_id} {year}):")
+                for idx, strat in enumerate(preview["strategies"], start=1):
+                    pits = strat["avg_pit_laps"]
+                    pits_str = f"{pits}" if pits else "[]"
+                    print(f"{idx}) {strat['sequence']} | avg pits: {pits_str} | prob: {strat['probability']}%")
+            driver_strategies = dict(driver_strategies)
+            for drv in grid_drivers:
+                if drv in driver_strategies:
+                    continue
+                driver_strategies[drv] = self._sample_auto_strategy(
+                    circuit_id=circuit_id,
+                    year=year,
+                    total_laps=total_laps,
+                    rng=pit_rng,
+                )
 
         if safety_car_laps is None:
             auto_sc_laps = set()
@@ -1042,16 +1179,65 @@ class MonteCarloSimulator:
             for label in ["A", "B"]
         }
 
+        if circuit_id is None:
+            chosen_circuit = self.circuits[0] if self.circuits else "unknown"
+        else:
+            chosen_circuit = circuit_id
+        if year is None:
+            years_for_circuit = self.years_by_circuit.get(chosen_circuit, [2025])
+            chosen_year = int(years_for_circuit[0]) if years_for_circuit else 2025
+        else:
+            chosen_year = int(year)
+        chosen_grid = grid if grid is not None else self.grid_drivers
+
+        if strategy_a_global is None or strategy_b_global is None:
+            if strategy_a_global is None:
+                entry_a = self._strategy_library_entry(chosen_circuit, chosen_year)
+                preview_a = self._auto_strategy_preview(entry_a, chosen_circuit, chosen_year)
+                if preview_a is not None:
+                    if from_notebook:
+                        print("Auto strategies (A):")
+                        for idx, strat in enumerate(preview_a["strategies"], start=1):
+                            pits = strat["avg_pit_laps"]
+                            pits_str = f"{pits}" if pits else "[]"
+                            print(f"{idx}) {strat['sequence']} | avg pits: {pits_str} | prob: {strat['probability']}%")
+                    if progress_callback is not None:
+                        progress_callback({
+                            "event": "auto_strategies",
+                            "strategy": "A",
+                            **preview_a,
+                        })
+            if strategy_b_global is None:
+                entry_b = self._strategy_library_entry(chosen_circuit, chosen_year)
+                preview_b = self._auto_strategy_preview(entry_b, chosen_circuit, chosen_year)
+                if preview_b is not None:
+                    if from_notebook:
+                        print("Auto strategies (B):")
+                        for idx, strat in enumerate(preview_b["strategies"], start=1):
+                            pits = strat["avg_pit_laps"]
+                            pits_str = f"{pits}" if pits else "[]"
+                            print(f"{idx}) {strat['sequence']} | avg pits: {pits_str} | prob: {strat['probability']}%")
+                    if progress_callback is not None:
+                        progress_callback({
+                            "event": "auto_strategies",
+                            "strategy": "B",
+                            **preview_b,
+                        })
+
         run_iter = range(num_runs_compare)
         if from_notebook:
             run_iter = tqdm(run_iter, desc="Strategy comparison")
 
         for run in run_iter:
             run_rng = np.random.default_rng(self.master_rng.integers(0, 1_000_000_000))
-            chosen_circuit = circuit_id if circuit_id is not None else run_rng.choice(self.circuits)
-            chosen_year = int(year) if year is not None else int(run_rng.choice(self.years_by_circuit.get(chosen_circuit, [2025])))
-            chosen_grid = grid if grid is not None else self.grid_drivers
-
+            if circuit_id is None:
+                chosen_circuit = run_rng.choice(self.circuits)
+            else:
+                chosen_circuit = circuit_id
+            if year is None:
+                chosen_year = int(run_rng.choice(self.years_by_circuit.get(chosen_circuit, [2025])))
+            else:
+                chosen_year = int(year)
             configs = [
                 ("A", strategy_a_global, strategy_a_driver),
                 ("B", strategy_b_global, strategy_b_driver),
@@ -1071,6 +1257,7 @@ class MonteCarloSimulator:
                     rain_laps=rain_laps,
                     pit_loss=None,
                     rng=rng_run,
+                    from_notebook=False,
                 )
                 last_lap = race_log["lap"].max()
                 final_class = race_log[race_log["lap"] == last_lap].sort_values("position")

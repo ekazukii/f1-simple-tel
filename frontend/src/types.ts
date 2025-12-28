@@ -119,8 +119,8 @@ export interface StrategyComparisonInput {
     stream_progress?: boolean;
   };
   strategy: {
-    strategy_a_global: StrategyEntry[];
-    strategy_b_global: StrategyEntry[];
+    strategy_a_global: StrategyEntry[] | null;
+    strategy_b_global: StrategyEntry[] | null;
     strategy_a_driver?: Record<string, StrategyEntry[]>;
     strategy_b_driver?: Record<string, StrategyEntry[]>;
     num_runs_compare?: number;
@@ -146,6 +146,17 @@ export type StrategyComparisonEvent =
   | { event: 'start'; mode: 'strategy_comparison'; total_runs: number }
   | { event: 'progress'; run: number; total_runs: number; wins?: Record<string, number> }
   | { event: 'result'; data: StrategyComparisonOutput }
+  | {
+      event: 'auto_strategies';
+      strategy: 'A' | 'B';
+      circuit_id: string;
+      year: number;
+      strategies: Array<{
+        sequence: string;
+        avg_pit_laps: Array<number | null>;
+        probability: number;
+      }>;
+    }
   | { event: 'stderr'; message: string }
   | { event: 'error'; message: string }
   | { event: 'log'; message: string };
