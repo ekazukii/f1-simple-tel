@@ -12,6 +12,22 @@ import pandas as pd
 import torch
 from tqdm.auto import tqdm
 
+CIRCUIT_ALIASES = {
+    "monaco": ["monaco", "monte_carlo"],
+    "singapore": ["singapore", "marina_bay"],
+    "miami": ["miami", "miami_gardens"],
+    "yas_marina": ["yas_marina", "yas_island"],
+    "montréal": ["montréal", "montreal"],
+    "são_paulo": ["são_paulo", "sao_paulo"],
+    "nürburgring": ["nürburgring", "nurburgring"],
+    "portimão": ["portimão", "portimao"],
+}
+CIRCUIT_CANONICAL = {
+    alias: canonical
+    for canonical, aliases in CIRCUIT_ALIASES.items()
+    for alias in aliases
+}
+
 
 class CleanPaceModel(torch.nn.Module):
     def __init__(self, vocab_sizes, spline_dim, weather_dim):
@@ -357,6 +373,35 @@ class MonteCarloSimulator:
             return modes.iloc[0]
         return series.iloc[0]
 
+    @staticmethod
+    def _canonical_circuit_id(circuit_id):
+        if circuit_id is None:
+            return None
+        return CIRCUIT_CANONICAL.get(str(circuit_id), str(circuit_id))
+
+    @staticmethod
+    def _year_in_list(year, years):
+        if year is None or years is None:
+            return False
+        try:
+            year_val = int(year)
+        except (TypeError, ValueError):
+            return False
+        return any(int(y) == year_val for y in years)
+
+    def _resolve_data_circuit_id(self, circuit_id, year):
+        canonical = self._canonical_circuit_id(circuit_id)
+        if canonical is None:
+            return None
+        years = self.years_by_circuit.get(canonical)
+        if years is not None and (year is None or self._year_in_list(year, years)):
+            return canonical
+        for alias in CIRCUIT_ALIASES.get(canonical, [canonical]):
+            alias_years = self.years_by_circuit.get(alias)
+            if alias_years is not None and (year is None or self._year_in_list(year, alias_years)):
+                return alias
+        return canonical
+
     def _strategy_library_entry(self, circuit_id, year):
         if not self.strategy_library:
             return None
@@ -365,13 +410,14 @@ class MonteCarloSimulator:
             year_val = int(year)
         except (TypeError, ValueError):
             return None
-        direct_key = f"{circuit_id}_{year_val}"
+        canonical = self._canonical_circuit_id(circuit_id)
+        direct_key = f"{canonical}_{year_val}"
         direct_entry = by_circuit_year.get(direct_key)
         if direct_entry is not None:
             return direct_entry
         candidates = [
             entry for entry in by_circuit_year.values()
-            if entry.get("circuit_id") == circuit_id and entry.get("year") is not None
+            if entry.get("circuit_id") == canonical and entry.get("year") is not None
         ]
         if not candidates:
             return None
@@ -735,13 +781,16 @@ class MonteCarloSimulator:
                     lap_noise.append(form + eps)
                 noise_by_driver[drv] = lap_noise
 
+        circuit_id_norm = self._canonical_circuit_id(circuit_id)
+        circuit_id_data = self._resolve_data_circuit_id(circuit_id_norm, year) or circuit_id_norm or circuit_id
+
         if driver_strategies is None:
             driver_strategies = {}
         if global_strategy is None:
-            entry = self._strategy_library_entry(circuit_id, year)
-            preview = self._auto_strategy_preview(entry, circuit_id, year)
+            entry = self._strategy_library_entry(circuit_id_norm, year)
+            preview = self._auto_strategy_preview(entry, circuit_id_norm, year)
             if from_notebook and preview is not None:
-                print(f"Auto strategies ({circuit_id} {year}):")
+                print(f"Auto strategies ({circuit_id_norm} {year}):")
                 for idx, strat in enumerate(preview["strategies"], start=1):
                     pits = strat["avg_pit_laps"]
                     pits_str = f"{pits}" if pits else "[]"
@@ -751,11 +800,13 @@ class MonteCarloSimulator:
                 if drv in driver_strategies:
                     continue
                 driver_strategies[drv] = self._sample_auto_strategy(
-                    circuit_id=circuit_id,
+                    circuit_id=circuit_id_norm,
                     year=year,
                     total_laps=total_laps,
                     rng=pit_rng,
                 )
+
+        circuit_id = circuit_id_data
 
         if safety_car_laps is None:
             auto_sc_laps = set()
@@ -1192,8 +1243,9 @@ class MonteCarloSimulator:
 
         if strategy_a_global is None or strategy_b_global is None:
             if strategy_a_global is None:
-                entry_a = self._strategy_library_entry(chosen_circuit, chosen_year)
-                preview_a = self._auto_strategy_preview(entry_a, chosen_circuit, chosen_year)
+                canon_circuit = self._canonical_circuit_id(chosen_circuit)
+                entry_a = self._strategy_library_entry(canon_circuit, chosen_year)
+                preview_a = self._auto_strategy_preview(entry_a, canon_circuit, chosen_year)
                 if preview_a is not None:
                     if from_notebook:
                         print("Auto strategies (A):")
@@ -1208,8 +1260,9 @@ class MonteCarloSimulator:
                             **preview_a,
                         })
             if strategy_b_global is None:
-                entry_b = self._strategy_library_entry(chosen_circuit, chosen_year)
-                preview_b = self._auto_strategy_preview(entry_b, chosen_circuit, chosen_year)
+                canon_circuit = self._canonical_circuit_id(chosen_circuit)
+                entry_b = self._strategy_library_entry(canon_circuit, chosen_year)
+                preview_b = self._auto_strategy_preview(entry_b, canon_circuit, chosen_year)
                 if preview_b is not None:
                     if from_notebook:
                         print("Auto strategies (B):")
