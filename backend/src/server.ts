@@ -7,6 +7,9 @@ import path from "path";
 import { initializeDatabase } from "./database";
 
 const DEFAULT_PORT = 4000;
+const STRATEGY_NUM_RUNS = 50;
+const STRATEGY_UPDATE_EVERY = 10;
+const STRATEGY_NOISE_SCALE = 0.5;
 
 const parsedPort = Number(process.env.PORT);
 const PORT =
@@ -259,13 +262,25 @@ router.post("/simulation/strategy", async (ctx) => {
   paths.dnf_path ??= await resolveModelPath("dnf_model.joblib");
   paths.safety_path ??= await resolveModelPath("safety_car_model.joblib");
 
+  const incomingOptions = payload.options ?? {};
+  const incomingStrategy = payload.strategy ?? {};
+  const options = {
+    ...incomingOptions,
+    noise_scale: STRATEGY_NOISE_SCALE,
+  };
+  const strategy = {
+    ...incomingStrategy,
+    num_runs_compare: STRATEGY_NUM_RUNS,
+    update_every: STRATEGY_UPDATE_EVERY,
+  };
+
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "f1sim-"));
   const inputPath = path.join(tempDir, "input.json");
   const outputPath = path.join(tempDir, "output.json");
   const inputPayload = {
     paths,
-    options: payload.options ?? {},
-    strategy: payload.strategy,
+    options,
+    strategy,
   };
   await fs.writeFile(inputPath, JSON.stringify(inputPayload, null, 2), "utf-8");
 

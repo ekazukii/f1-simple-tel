@@ -137,3 +137,144 @@
   background: rgba(69, 99, 255, 0.12);
   font-size: 0.75rem;
 }
+
+.strategy-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+}
+
+.strategy-card {
+  background: rgba(8, 10, 24, 0.6);
+  border: 1px solid #2e3560;
+  border-radius: 0.9rem;
+  padding: 1rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.strategy-card select,
+.strategy-card input {
+  border-radius: 0.65rem;
+  border: 1px solid #2e3560;
+  background: rgba(255, 255, 255, 0.05);
+  color: inherit;
+  padding: 0.55rem 0.65rem;
+  font-size: 0.9rem;
+  font-family: inherit;
+}
+
+.strategy-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.strategy-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.chip-button {
+  border: 1px solid #3a4a86;
+  background: rgba(255, 255, 255, 0.06);
+  color: #e7eaf4;
+  padding: 0.35rem 0.8rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.chip-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.stint-list {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.stint-row {
+  display: grid;
+  grid-template-columns: auto minmax(120px, 1fr) minmax(160px, 1fr);
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.stint-label {
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.pit-window {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.pit-window input {
+  width: 74px;
+}
+
+.stint-error select,
+.stint-error input {
+  border-color: rgba(255, 140, 66, 0.9);
+  box-shadow: 0 0 0 1px rgba(255, 140, 66, 0.2);
+}
+
+.error-text {
+  color: #ff8c42;
+  font-size: 0.75rem;
+  margin-left: 0.2rem;
+}
+
+.strategy-preview {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.compound-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.compound-chip {
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.compound-soft {
+  background: #ff5b5b;
+  color: #120c0c;
+}
+
+.compound-medium {
+  background: #f8d44a;
+  color: #120c0c;
+}
+
+.compound-hard {
+  background: #f2f2f2;
+  color: #120c0c;
+}
+
+.compound-inter {
+  background: #2ecc71;
+  color: #120c0c;
+}
+
+.compound-wet {
+  background: #4da3ff;
+  color: #120c0c;
+}
+
+.compound-unknown {
+  background: rgba(255, 255, 255, 0.2);
+  color: #e7eaf4;
+}
