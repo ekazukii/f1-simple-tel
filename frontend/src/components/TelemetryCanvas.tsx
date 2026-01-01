@@ -39,12 +39,12 @@ export function TelemetryCanvas({
     }
 
     ctx.clearRect(0, 0, width, height);
-    ctx.fillStyle = "#05060a";
+    ctx.fillStyle = "#f8fafc";
     ctx.fillRect(0, 0, width, height);
 
     if (!canvasPoints.length) {
-      ctx.fillStyle = "#aaa";
-      ctx.font = "16px Inter, system-ui";
+      ctx.fillStyle = "#6b7280";
+      ctx.font = '16px "IBM Plex Sans", "Helvetica Neue", sans-serif';
       ctx.textAlign = "center";
       ctx.fillText("No location samples yet", width / 2, height / 2);
       return;
@@ -196,7 +196,7 @@ function getSpeedColor(speed: number | undefined | null, bounds: { min: number; 
     return speedToColor(0.5);
   }
 
-  return '#ffffff';
+  return '#0f172a';
 }
 
 function speedToColor(ratio: number) {

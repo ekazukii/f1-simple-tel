@@ -16,11 +16,11 @@
 }
 
 .insights-card {
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
   border-radius: 0.9rem;
   padding: 1rem;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
 .insights-card.full-span {
@@ -46,7 +46,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
-  color: #d9def2;
+  color: var(--color-text);
 }
 
 .pit-list {
@@ -62,8 +62,8 @@
   display: grid;
   grid-template-columns: minmax(180px, 280px) 1fr auto;
   align-items: center;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: #ffffff;
+  border: 1px solid var(--color-border);
   border-radius: 0.6rem;
   padding: 0.4rem 0.6rem;
   column-gap: 12px;
@@ -74,11 +74,11 @@
 }
 
 .pit-duration {
-  color: #d9def2;
+  color: var(--color-text);
 }
 
 .pit-lap {
-  color: #9ea7c8;
+  color: var(--color-muted);
 }
 
 .compound-legend {
@@ -92,7 +92,7 @@
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  color: #c3c9e7;
+  color: var(--color-muted);
   font-size: 0.9rem;
 }
 
@@ -100,7 +100,7 @@
   width: 14px;
   height: 14px;
   border-radius: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(17, 24, 39, 0.2);
 }
 
 .stint-timeline {
@@ -125,11 +125,11 @@
 
 .stint-driver-number {
   font-weight: 700;
-  color: #d9def2;
+  color: var(--color-text);
 }
 
 .stint-driver-name {
-  color: #9ea7c8;
+  color: var(--color-muted);
   font-size: 0.95rem;
 }
 
@@ -138,8 +138,8 @@
   width: 100%;
   height: 32px;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: #f1f4f9;
+  border: 1px solid var(--color-border);
   overflow: hidden;
 }
 
@@ -149,12 +149,12 @@
   bottom: 2px;
   border-radius: 6px;
   opacity: 0.92;
-  border: 1px solid rgba(5, 6, 10, 0.4);
+  border: 1px solid rgba(17, 24, 39, 0.2);
 }
 
 .stint-scale {
   display: flex;
   justify-content: space-between;
-  color: #9ea7c8;
+  color: var(--color-muted);
   font-size: 0.85rem;
 }

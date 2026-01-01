@@ -399,7 +399,7 @@ function LapDegradationChart({ points, maxLap }: { points: LapCompoundPoint[]; m
           </title>
         </g>
       ))}
-      <g fill="#9ea7c8" fontSize="11">
+      <g fill="#6b7280" fontSize="11">
         <text x={padding} y={padding - 6}>Lap time (linear, clipped to median -2s / +3s)</text>
         <text x={width - padding - 60} y={height - 8}>Lap →</text>
         <text x={padding} y={height - 8}>{`Median: ${median.toFixed(3)}s · Clip: [${(median - 2).toFixed(3)}s, ${(median + 3).toFixed(3)}s] · Actual min/max: ${minDuration.toFixed(3)}s / ${maxDuration.toFixed(3)}s`}</text>

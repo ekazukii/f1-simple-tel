@@ -3,8 +3,8 @@
 }
 
 :global(.driver-select__control) {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid #2e3560;
+  background: #ffffff;
+  border: 1px solid var(--color-border);
   box-shadow: none;
   min-height: 42px;
   color: inherit;
@@ -12,8 +12,8 @@
 }
 
 :global(.driver-select__control--is-focused) {
-  border-color: #4563ff;
-  box-shadow: 0 0 0 2px rgba(69, 99, 255, 0.2);
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px rgba(29, 78, 216, 0.15);
 }
 
 :global(.driver-select__value-container) {
@@ -26,46 +26,46 @@
 
 :global(.driver-select__input-container),
 :global(.driver-select__placeholder) {
-  color: #9ea7c8;
+  color: var(--color-muted);
 }
 
 :global(.driver-select__menu) {
-  background: rgba(8, 11, 25, 0.95);
-  border: 1px solid #2e3560;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
-  color: #e7eaf4;
+  background: #ffffff;
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-soft);
+  color: var(--color-text);
   border-radius: 12px;
   overflow: hidden;
 }
 
 :global(.driver-select__option) {
   background: transparent;
-  color: #e7eaf4;
+  color: var(--color-text);
   cursor: pointer;
   padding: 10px 12px;
 }
 
 :global(.driver-select__option--is-focused) {
-  background: #182040;
+  background: rgba(29, 78, 216, 0.08);
 }
 
 :global(.driver-select__option--is-selected) {
-  background: #4563ff;
-  color: #fff;
+  background: #1d4ed8;
+  color: #ffffff;
 }
 
 :global(.driver-select__indicator-separator) {
-  background: #1d2033;
+  background: var(--color-border);
 }
 
 :global(.driver-select__dropdown-indicator),
 :global(.driver-select__clear-indicator) {
-  color: #9ea7c8;
+  color: var(--color-muted);
 }
 
 :global(.driver-select__dropdown-indicator:hover),
 :global(.driver-select__clear-indicator:hover) {
-  color: #ffffff;
+  color: var(--color-text);
 }
 
 .session-grid {
@@ -75,18 +75,18 @@
 }
 
 .session-panel {
-  background: rgba(8, 11, 25, 0.9);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 1rem;
   padding: 1.25rem;
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  box-shadow: 0 20px 45px rgba(5, 6, 10, 0.6);
+  box-shadow: var(--shadow-soft);
 }
 
 .session-panel header {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid var(--color-border);
   padding-bottom: 0.75rem;
 }
 

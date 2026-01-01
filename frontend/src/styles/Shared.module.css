@@ -1,40 +1,42 @@
 .app {
-  max-width: 1200px;
+  max-width: 1240px;
   margin: 0 auto;
-  padding: 2rem 1.5rem 3rem;
+  padding: 2.5rem 1.75rem 3.5rem;
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 2rem;
 }
 
 .toolbar {
   display: flex;
   justify-content: space-between;
-  gap: 2rem;
+  gap: 2.5rem;
   flex-wrap: wrap;
   align-items: flex-end;
 }
 
 .toolbar h1 {
-  margin: 0.25rem 0 0;
-  font-size: 2.5rem;
+  margin: 0.35rem 0 0;
+  font-size: 2.7rem;
+  color: var(--color-text);
 }
 
 .eyebrow {
   text-transform: uppercase;
-  font-size: 0.8rem;
-  letter-spacing: 0.1em;
+  font-size: 0.75rem;
+  letter-spacing: 0.14em;
   color: var(--color-muted);
   margin: 0;
 }
 
 .lead {
   color: var(--color-muted);
+  font-size: 1rem;
 }
 
 .control-stack {
   display: flex;
-  gap: 1.5rem;
+  gap: 1.25rem;
   flex-wrap: wrap;
 }
 
@@ -57,20 +59,21 @@
   min-height: 0;
   max-height: 56px;
   height: auto;
-  border-radius: 0.75rem;
-  border: 1px solid #2e3560;
-  background: rgba(255, 255, 255, 0.05);
+  border-radius: 0.8rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
   color: inherit;
   padding: 0.5rem 0.75rem;
   font-size: 0.95rem;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
 .session-picker option {
-  background: #0f1120;
+  background: var(--color-surface);
 }
 
 .session-picker small {
-  color: #9ea7c8;
+  color: var(--color-muted);
 }
 
 .driver-picker {
@@ -85,16 +88,17 @@
 }
 
 .driver-picker input {
-  border-radius: 0.75rem;
-  border: 1px solid #2e3560;
-  background: rgba(255, 255, 255, 0.05);
+  border-radius: 0.8rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
   color: inherit;
   padding: 0.75rem;
   font-size: 0.95rem;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
 .driver-picker small {
-  color: #9ea7c8;
+  color: var(--color-muted);
 }
 
 .lap-picker {
@@ -109,36 +113,37 @@
 }
 
 .lap-picker select {
-  border-radius: 0.75rem;
-  border: 1px solid #2e3560;
-  background: rgba(255, 255, 255, 0.05);
+  border-radius: 0.8rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
   color: inherit;
   padding: 0.75rem;
   font-size: 0.95rem;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
 .lap-picker small {
-  color: #9ea7c8;
+  color: var(--color-muted);
 }
 
 .status {
   padding: 0.75rem 1rem;
-  border-radius: 0.5rem;
+  border-radius: 0.65rem;
   font-weight: 500;
 }
 
 .info {
-  background: rgba(42, 157, 244, 0.15);
-  border: 1px solid rgba(42, 157, 244, 0.4);
+  background: rgba(31, 122, 224, 0.12);
+  border: 1px solid rgba(31, 122, 224, 0.35);
 }
 
 .error {
-  background: rgba(255, 99, 132, 0.15);
-  border: 1px solid rgba(255, 99, 132, 0.4);
+  background: rgba(214, 69, 69, 0.12);
+  border: 1px solid rgba(214, 69, 69, 0.35);
 }
 
 .muted {
-  color: #9ea7c8;
+  color: var(--color-muted);
   margin: 0.25rem 0 0;
 }
 

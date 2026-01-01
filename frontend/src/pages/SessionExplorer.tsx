@@ -98,41 +98,41 @@ function SessionExplorer() {
     () => ({
       control: (base, state) => ({
         ...base,
-        backgroundColor: 'rgba(255, 255, 255, 0.05)',
-        borderColor: state.isFocused ? '#4563ff' : '#2e3560',
-        boxShadow: state.isFocused ? '0 0 0 2px rgba(69, 99, 255, 0.2)' : 'none',
+        backgroundColor: '#ffffff',
+        borderColor: state.isFocused ? '#1d4ed8' : 'var(--color-border)',
+        boxShadow: state.isFocused ? '0 0 0 2px rgba(29, 78, 216, 0.15)' : 'none',
         minHeight: 42,
-        color: '#e7eaf4',
+        color: 'var(--color-text)',
         borderRadius: 12
       }),
       menu: (base) => ({
         ...base,
-        backgroundColor: 'rgba(8, 11, 25, 0.95)',
-        border: '1px solid #2e3560',
-        boxShadow: '0 12px 30px rgba(0, 0, 0, 0.35)',
-        color: '#e7eaf4',
+        backgroundColor: '#ffffff',
+        border: '1px solid var(--color-border)',
+        boxShadow: 'var(--shadow-soft)',
+        color: 'var(--color-text)',
         marginTop: 4,
         borderRadius: 12,
         overflow: 'hidden'
       }),
       option: (base, state) => ({
         ...base,
-        backgroundColor: state.isSelected ? '#4563ff' : state.isFocused ? '#182040' : 'transparent',
-        color: state.isSelected ? '#fff' : '#e7eaf4',
+        backgroundColor: state.isSelected ? '#1d4ed8' : state.isFocused ? 'rgba(29, 78, 216, 0.08)' : 'transparent',
+        color: state.isSelected ? '#ffffff' : 'var(--color-text)',
         cursor: 'pointer'
       }),
-      singleValue: (base) => ({ ...base, color: '#e7eaf4' }),
-      input: (base) => ({ ...base, color: '#e7eaf4' }),
-      placeholder: (base) => ({ ...base, color: '#9ea7c8' }),
+      singleValue: (base) => ({ ...base, color: 'var(--color-text)' }),
+      input: (base) => ({ ...base, color: 'var(--color-text)' }),
+      placeholder: (base) => ({ ...base, color: 'var(--color-muted)' }),
       dropdownIndicator: (base, state) => ({
         ...base,
-        color: state.isFocused ? '#ffffff' : '#9ea7c8'
+        color: state.isFocused ? 'var(--color-text)' : 'var(--color-muted)'
       }),
       clearIndicator: (base, state) => ({
         ...base,
-        color: state.isFocused ? '#ffffff' : '#9ea7c8'
+        color: state.isFocused ? 'var(--color-text)' : 'var(--color-muted)'
       }),
-      indicatorSeparator: (base) => ({ ...base, backgroundColor: '#1d2033' }),
+      indicatorSeparator: (base) => ({ ...base, backgroundColor: 'var(--color-border)' }),
       valueContainer: (base) => ({ ...base, padding: '4px 10px' })
     }),
     []
@@ -258,6 +258,7 @@ function SessionExplorer() {
         <div>
           <p className={cx('eyebrow')}>Formula 1 telemetry</p>
           <h1>Session explorer</h1>
+          <p className={cx('lead')}>Compare stints, timing, and telemetry snapshots across multiple sessions.</p>
         </div>
         <div className={cx('control-stack')}>
           <div className={cx('session-picker')}>

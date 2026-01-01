@@ -9,7 +9,7 @@ interface Props {
 const COMPOUND_COLORS: Record<string, string> = {
   SOFT: '#ff4d4d',
   MEDIUM: '#f6c343',
-  HARD: '#f9f9f9'
+  HARD: '#e5e7eb'
 };
 const cx = (...names: string[]) => names.map((n) => styles[n]).filter(Boolean).join(' ');
 
@@ -44,12 +44,15 @@ export function TyreUsageTable({ matrix }: Props) {
               <th># {driver}</th>
               {viewModel.lapNumbers.map((lap, index) => {
                 const compound = viewModel.usage[driver]?.[index]?.toUpperCase();
-                const color = compound ? COMPOUND_COLORS[compound] ?? '#cccccc' : 'transparent';
+                const color = compound ? COMPOUND_COLORS[compound] ?? '#d1d5db' : 'transparent';
                 return (
                   <td key={`${driver}-${lap}`}>
                     <span
                       className={cx('tyre-cell')}
-                      style={{ backgroundColor: color, borderColor: color === 'transparent' ? '#2e3560' : color }}
+                      style={{
+                        backgroundColor: color,
+                        borderColor: color === 'transparent' ? 'var(--color-border-strong)' : color
+                      }}
                       title={compound ? `${compound} lap ${lap}` : `No data lap ${lap}`}
                     />
                   </td>

@@ -1,7 +1,8 @@
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Serif:wght@500;600;700&display=swap");
 @import "./tokens.css";
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 * {
@@ -11,7 +12,37 @@
 body {
   margin: 0;
   font-family: var(--font-body);
-  background: radial-gradient(circle at top, #161b33, var(--color-bg) 60%);
+  background:
+    radial-gradient(circle at 10% 5%, rgba(29, 78, 216, 0.08), transparent 42%),
+    radial-gradient(circle at 85% 0%, rgba(245, 198, 66, 0.2), transparent 38%),
+    repeating-linear-gradient(
+      135deg,
+      rgba(17, 24, 39, 0.04),
+      rgba(17, 24, 39, 0.04) 1px,
+      transparent 1px,
+      transparent 26px
+    ),
+    linear-gradient(180deg, #fdfdff 0%, #f1f4fa 60%, #e9edf6 100%);
   min-height: 100vh;
   color: var(--color-text);
+  line-height: 1.5;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5 {
+  font-family: var(--font-display);
+  letter-spacing: 0.01em;
+}
+
+code,
+pre,
+textarea {
+  font-family: var(--font-mono);
+}
+
+a {
+  color: inherit;
 }

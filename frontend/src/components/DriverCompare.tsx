@@ -412,8 +412,8 @@ function TelemetryChart({ points, maxSpeed }: { points: ResampledPoint[]; maxSpe
         <path d={brakePathB} fill="none" stroke="rgba(255, 140, 70, 0.8)" strokeWidth={1.4} strokeLinecap="round" />
 
         <g className={cx('compare-axis')}>
-          <text x={padding} y={padding + 12} fill="#9ea7c8" fontSize="11">Speed (km/h)</text>
-          <text x={padding} y={throttleBase - throttleHeight - 4} fill="#9ea7c8" fontSize="11">Throttle / Brake (%)</text>
+          <text x={padding} y={padding + 12} fill="#6b7280" fontSize="11">Speed (km/h)</text>
+          <text x={padding} y={throttleBase - throttleHeight - 4} fill="#6b7280" fontSize="11">Throttle / Brake (%)</text>
         </g>
       </svg>
       <div className={cx('compare-legend')}>

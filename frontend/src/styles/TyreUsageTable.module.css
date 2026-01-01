@@ -11,17 +11,17 @@
 
 .tyre-table th,
 .tyre-table td {
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--color-border);
   padding: 0.2rem;
   text-align: center;
-  color: #9ea7c8;
-  background: rgba(255, 255, 255, 0.03);
+  color: var(--color-muted);
+  background: #ffffff;
 }
 
 .tyre-table th:first-of-type {
   position: sticky;
   left: 0;
-  background: rgba(8, 11, 25, 0.95);
+  background: #f4f6fb;
   z-index: 1;
 }
 
@@ -30,5 +30,5 @@
   width: 20px;
   height: 20px;
   border-radius: 4px;
-  border: 1px solid #2e3560;
+  border: 1px solid var(--color-border-strong);
 }

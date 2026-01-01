@@ -49,7 +49,7 @@ function GaragePortal() {
 
     // bg and mask materials
     const bgMat = new THREE.MeshBasicMaterial({
-      color: 0x0b0b0b,
+      color: 0xf4f6fb,
       transparent: true,
       opacity: 1,
       depthTest: false,

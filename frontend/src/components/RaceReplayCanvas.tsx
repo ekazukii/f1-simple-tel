@@ -41,10 +41,10 @@ export function RaceReplayCanvas({ points, bounds, width = defaultWidth, height 
     }
 
     ctx.clearRect(0, 0, width, height)
-    ctx.fillStyle = '#05060a'
+    ctx.fillStyle = '#f8fafc'
     ctx.fillRect(0, 0, width, height)
 
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)'
+    ctx.strokeStyle = 'rgba(17, 24, 39, 0.08)'
     ctx.lineWidth = 1
     ctx.strokeRect(16, 16, width - 32, height - 32)
 
@@ -53,7 +53,7 @@ export function RaceReplayCanvas({ points, bounds, width = defaultWidth, height 
     const scaleY = (value: number) =>
       32 + ((value - bounds.minY) / (bounds.maxY - bounds.minY || 1)) * (height - 64)
 
-    ctx.font = '12px Inter, system-ui'
+    ctx.font = '12px "IBM Plex Sans", "Helvetica Neue", sans-serif'
     ctx.textAlign = 'left'
     ctx.textBaseline = 'middle'
 
@@ -66,7 +66,7 @@ export function RaceReplayCanvas({ points, bounds, width = defaultWidth, height 
       ctx.arc(px, py, 6, 0, Math.PI * 2)
       ctx.fill()
 
-      ctx.fillStyle = '#ffffff'
+      ctx.fillStyle = '#0f172a'
       ctx.fillText(point.label, px + 10, py)
     })
   }, [points, bounds, width, height])

@@ -1,23 +1,27 @@
 :root {
-  --font-body: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-body: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+  --font-display: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", "Menlo", "Courier New", monospace;
 
-  --color-bg: #06070f;
-  --color-surface: rgba(8, 11, 25, 0.85);
-  --color-surface-strong: rgba(9, 12, 24, 0.9);
-  --color-card: rgba(255, 255, 255, 0.02);
-  --color-border: rgba(255, 255, 255, 0.08);
-  --color-border-strong: rgba(255, 255, 255, 0.12);
-  --color-muted: #9ea7c8;
-  --color-text: #fdfdfd;
-  --color-accent: #4563ff;
-  --color-accent-soft: rgba(69, 99, 255, 0.2);
+  --color-bg: #f5f7fb;
+  --color-surface: #ffffff;
+  --color-surface-strong: #f1f3f8;
+  --color-card: #f8f9fc;
+  --color-border: #d9dee7;
+  --color-border-strong: #c7cedb;
+  --color-muted: #5d6472;
+  --color-text: #111827;
+  --color-accent: #1d4ed8;
+  --color-accent-soft: rgba(29, 78, 216, 0.12);
+  --color-info: #1f7ae0;
+  --color-error: #d64545;
 
-  --shadow-soft: 0 12px 30px rgba(0, 0, 0, 0.35);
-  --shadow-strong: 0 20px 45px rgba(5, 6, 10, 0.6);
+  --shadow-soft: 0 14px 30px rgba(15, 23, 42, 0.08);
+  --shadow-strong: 0 24px 50px rgba(15, 23, 42, 0.12);
 
   --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
 
   --space-1: 4px;
   --space-2: 8px;

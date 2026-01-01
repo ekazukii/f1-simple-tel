@@ -234,6 +234,7 @@ export function RaceReplayer() {
         <div>
           <p className={cx("eyebrow")}>Race Replayer</p>
           <h1>Live telemetry playback</h1>
+          <p className={cx("lead")}>Scrub through position traces, replay race control, and compare timing moments.</p>
         </div>
         <div className={cx("control-stack")}>
           <div className={cx("session-picker")}>
