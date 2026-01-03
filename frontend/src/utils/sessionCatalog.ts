@@ -17,11 +17,18 @@ export interface SessionCatalogEntry {
 
 export function buildSessionOptions(catalog: SessionCatalogEntry[]) {
   const currentYear = new Date().getFullYear()
-  return catalog
-    .filter((entry) => {
-      const type = String(entry.session_type || '').toUpperCase()
-      return entry.year === currentYear && (type === 'RACE' || type === 'SPRINT')
-    })
+  const raceSessions = catalog.filter((entry) => {
+    const type = String(entry.session_type || '').toUpperCase()
+    return type === 'RACE' || type === 'SPRINT'
+  })
+  const years = raceSessions
+    .map((entry) => entry.year)
+    .filter((year): year is number => typeof year === 'number')
+  const latestYear = years.length ? Math.max(...years) : currentYear
+  const targetYear = years.includes(currentYear) ? currentYear : latestYear
+
+  return raceSessions
+    .filter((entry) => entry.year === targetYear)
     .sort((a, b) => new Date(a.date_start).getTime() - new Date(b.date_start).getTime())
     .map((entry) => ({
       value: String(entry.session_key),

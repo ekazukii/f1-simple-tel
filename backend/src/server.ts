@@ -4,7 +4,7 @@ import { spawn } from "child_process";
 import { promises as fs } from "fs";
 import os from "os";
 import path from "path";
-import { initializeDatabase } from "./database";
+import { db, initializeDatabase } from "./database";
 
 const DEFAULT_PORT = 4000;
 const STRATEGY_NUM_RUNS = 50;
