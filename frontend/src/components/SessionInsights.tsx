@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import sharedStyles from '../styles/Shared.module.css';
 import styles from '../styles/SessionInsights.module.css';
 import type { OpenF1SessionData } from '../types';
@@ -8,6 +8,7 @@ import { getDriverByNumber, getDriverByNumberOnDate } from '../utils/drivers';
 interface Props {
   session: OpenF1SessionData;
   activeDriver: number | null;
+  driverSelect?: ReactNode;
 }
 
 interface LapSample {
@@ -46,7 +47,7 @@ const COMPOUND_COLORS: Record<string, string> = {
 
 const loggedUnknownCompounds = new Set<string>();
 
-export function SessionInsights({ session, activeDriver }: Props) {
+export function SessionInsights({ session, activeDriver, driverSelect }: Props) {
   const sessionDate = session.sessionInfo?.date_start ?? session.sessionInfo?.date_end ?? new Date().toISOString();
   const lapSamples = useMemo(() => buildLapSamples(session.laps ?? []), [session.laps]);
   const maxLap = useMemo(() => computeMaxLap(lapSamples, session.stints ?? []), [lapSamples, session.stints]);
@@ -122,24 +123,6 @@ export function SessionInsights({ session, activeDriver }: Props) {
 
         <div className={cx('insights-card', 'full-span')}>
           <div className={cx('insights-card-head')}>
-            <div>
-              <h4>Lap pace & tyre fade</h4>
-              <p className={cx('muted')}>Lap time per lap with stint compound bands</p>
-            </div>
-          </div>
-          {lapCompoundSeries.length ? (
-            (() => {
-              const lastLap = lapCompoundSeries.at(-1)?.lap ?? 1;
-              const maxForChart = maxLap || lastLap || 1;
-              return <LapDegradationChart points={lapCompoundSeries} maxLap={maxForChart} />;
-            })()
-          ) : (
-            <p className={cx('muted')}>No lap data available for this driver.</p>
-          )}
-        </div>
-
-        <div className={cx('insights-card', 'full-span')}>
-          <div className={cx('insights-card-head')}>
             <h4>Stint timeline</h4>
             <p className={cx('muted')}>Tyre compounds and lap ranges</p>
             <div className={cx('compound-legend')}>
@@ -152,6 +135,25 @@ export function SessionInsights({ session, activeDriver }: Props) {
             </div>
           </div>
           <StintTimeline rows={stintTimeline} maxLap={maxLap || 1} />
+        </div>
+
+        <div className={cx('insights-card', 'full-span')}>
+          <div className={cx('insights-card-head')}>
+            <div>
+              <h4>Driver focus & lap pace</h4>
+              <p className={cx('muted')}>Select a driver, then review lap time and tyre fade.</p>
+            </div>
+          </div>
+          {driverSelect ? <div className={cx('insights-controls')}>{driverSelect}</div> : null}
+          {lapCompoundSeries.length ? (
+            (() => {
+              const lastLap = lapCompoundSeries.at(-1)?.lap ?? 1;
+              const maxForChart = maxLap || lastLap || 1;
+              return <LapDegradationChart points={lapCompoundSeries} maxLap={maxForChart} />;
+            })()
+          ) : (
+            <p className={cx('muted')}>No lap data available for this driver.</p>
+          )}
         </div>
       </div>
     </section>

@@ -158,3 +158,10 @@
   color: var(--color-muted);
   font-size: 0.85rem;
 }
+
+.insights-controls {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}

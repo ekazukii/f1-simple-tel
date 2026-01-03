@@ -246,6 +246,11 @@ function SessionExplorer() {
             loading={status.loading && !data}
             preferredDriver={preferredDriver}
             selectedLap={selectedLap}
+            driverOptions={driverOptions}
+            driverSelectStyles={driverSelectStyles}
+            onDriverSelect={handleDriverSelect}
+            lapOptions={lapOptions}
+            onLapChange={handleLapChange}
           />
         );
       }),
@@ -272,33 +277,6 @@ function SessionExplorer() {
             </select>
             <small>Hold Cmd/Ctrl to select multiple sessions.</small>
           </div>
-          <div className={cx('driver-picker')}>
-            <label htmlFor="driver-input">Driver number</label>
-            <Select
-              inputId="driver-input"
-              classNamePrefix="driver-select"
-              className={cx('driver-select-container')}
-              options={driverOptions}
-              isClearable
-              placeholder="Search driver by number or name"
-              value={driverOptions.find((opt) => opt.value === preferredDriver) ?? null}
-              onChange={handleDriverSelect}
-              menuPlacement="auto"
-              styles={driverSelectStyles}
-            />
-            <small>Prefer this driver’s telemetry. Type to search or pick from the list.</small>
-          </div>
-          <div className={cx('lap-picker')}>
-            <label htmlFor="lap-select">Lap</label>
-            <select id="lap-select" value={selectedLap ?? ''} onChange={handleLapChange} disabled={!lapOptions.length}>
-              {lapOptions.map((lap) => (
-                <option value={lap} key={lap}>
-                  Lap {lap}
-                </option>
-              ))}
-            </select>
-            <small>Shows only the selected lap’s telemetry when available.</small>
-          </div>
         </div>
       </header>
 
@@ -316,9 +294,25 @@ interface SessionPanelProps {
   loading?: boolean;
   preferredDriver: number | null;
   selectedLap: number | null;
+  driverOptions: DriverOption[];
+  driverSelectStyles: StylesConfig<DriverOption, false>;
+  onDriverSelect: (option: SingleValue<DriverOption>) => void;
+  lapOptions: number[];
+  onLapChange: (event: React.ChangeEvent<HTMLSelectElement>) => void;
 }
 
-function SessionPanel({ sessionKey, data, loading, preferredDriver, selectedLap }: SessionPanelProps) {
+function SessionPanel({
+  sessionKey,
+  data,
+  loading,
+  preferredDriver,
+  selectedLap,
+  driverOptions,
+  driverSelectStyles,
+  onDriverSelect,
+  lapOptions,
+  onLapChange
+}: SessionPanelProps) {
   if (!data) {
     return (
       <section className={cx('session-panel')}>
@@ -403,9 +397,54 @@ function SessionPanel({ sessionKey, data, loading, preferredDriver, selectedLap 
         )}
       </header>
 
-      <TelemetryCanvas points={displayedTelemetry} />
+      <SessionInsights
+        session={data}
+        activeDriver={activeDriver}
+        driverSelect={
+          <div className={cx('driver-picker')}>
+            <label htmlFor={`driver-input-${sessionKey}`}>Driver focus</label>
+            <Select
+              inputId={`driver-input-${sessionKey}`}
+              classNamePrefix="driver-select"
+              className={cx('driver-select-container')}
+              options={driverOptions}
+              isClearable
+              placeholder="Search driver by number or name"
+              value={driverOptions.find((opt) => opt.value === preferredDriver) ?? null}
+              onChange={onDriverSelect}
+              menuPlacement="auto"
+              styles={driverSelectStyles}
+            />
+            <small>Prefer this driver’s telemetry and stint summaries.</small>
+          </div>
+        }
+      />
+      <div className={cx('telemetry-panel')}>
+        <div>
+          <h3 className={cx('section-title')}>Track speed map</h3>
+          <p className={cx('muted')}>Driver trace colored by speed across the circuit.</p>
+        </div>
+        <div className={cx('control-stack')}>
+          <div className={cx('lap-picker')}>
+            <label htmlFor={`lap-select-${sessionKey}`}>Lap focus</label>
+            <select
+              id={`lap-select-${sessionKey}`}
+              value={selectedLap ?? ''}
+              onChange={onLapChange}
+              disabled={!lapOptions.length}
+            >
+              {lapOptions.map((lap) => (
+                <option value={lap} key={lap}>
+                  Lap {lap}
+                </option>
+              ))}
+            </select>
+            <small>Shows only the selected lap’s telemetry when available.</small>
+          </div>
+        </div>
+        <TelemetryCanvas points={displayedTelemetry} />
+      </div>
       <DriverCompare session={data} selectedLap={effectiveLapNumber} preferredDriver={preferredDriver} />
-      <SessionInsights session={data} activeDriver={activeDriver} />
     </section>
   );
 }
