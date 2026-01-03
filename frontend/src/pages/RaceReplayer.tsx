@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import sharedStyles from "../styles/Shared.module.css";
 import styles from "../styles/RaceReplayer.module.css";
 import sessionCatalog from "../data/sessionCatalog.json";
-import type { OpenF1SessionData, RaceControlRecord } from "../types";
+import type { LapRecord, OpenF1SessionData, RaceControlRecord } from "../types";
 import { fetchSession } from "../api/sessions";
 import type { SessionCatalogEntry } from "../utils/sessionCatalog";
 import { buildSessionOptions } from "../utils/sessionCatalog";
@@ -13,6 +13,15 @@ import { getDriverColor } from "../utils/teamColors";
 import { getDriverByNumberOnDate } from "../utils/drivers";
 
 const SPEED_PRESETS = [0.1, 0.25, 0.5, 1, 2, 4, 10];
+const CRASH_RENDER_MODE: "park" | "hide" = "park";
+const STOP_WINDOW_MS = 20_000;
+const STOP_DISTANCE = 15;
+const CRASH_MIN_MS = 75_000;
+const LAP_STALL_MS = 90_000;
+const SPEED_LOW_KMH = 40;
+const SPEED_RECOVER_KMH = 80;
+const PRE_START_GRACE_MS = 60_000;
+const CRASH_LONG_DISTANCE = 40;
 const cx = (...names: string[]) =>
   names
     .map((n) => styles[n] || sharedStyles[n])
@@ -21,7 +30,7 @@ const cx = (...names: string[]) =>
 
 type StatusState = { loading: boolean; error: string | null };
 
-type DriverSample = { x: number; y: number; time: number };
+type DriverSample = { x: number; y: number; time: number; speed?: number | null };
 
 type DriverTimeline = {
   driver: number;
@@ -105,6 +114,25 @@ export function RaceReplayer() {
     () => computePlaybackRange(timelines),
     [timelines]
   );
+  const lapTimeline = useMemo(
+    () => buildLapTimeline(session?.laps ?? []),
+    [session?.laps]
+  );
+  const raceStartMs = useMemo(() => {
+    if (!lapTimeline.size) {
+      return playbackRange?.start ?? 0;
+    }
+    let earliest = Number.POSITIVE_INFINITY;
+    lapTimeline.forEach((laps) => {
+      if (laps.length) {
+        earliest = Math.min(earliest, laps[0].time);
+      }
+    });
+    if (!Number.isFinite(earliest)) {
+      return playbackRange?.start ?? 0;
+    }
+    return earliest;
+  }, [lapTimeline, playbackRange?.start]);
   const raceEvents = useMemo<ReplayEvent[]>(
     () => buildRaceEvents(session, playbackRange),
     [session, playbackRange]
@@ -190,25 +218,51 @@ export function RaceReplayer() {
     };
   }, [isPlaying, speed, playbackRange]);
 
+  const crashStartTimes = useMemo(
+    () => buildCrashStartTimes(timelines, lapTimeline, raceStartMs),
+    [timelines, lapTimeline, raceStartMs]
+  );
+
   const replayPoints = useMemo<ReplayPoint[]>(() => {
     if (!playbackRange || !trackBounds) {
       return [];
     }
+    const crashedDrivers = new Set<number>();
+    crashStartTimes.forEach((crashStart, driver) => {
+      if (crashStart != null && currentTime >= crashStart) {
+        crashedDrivers.add(driver);
+      }
+    });
+    const crashSlots = new Map<number, number>();
+    Array.from(crashedDrivers)
+      .sort((a, b) => a - b)
+      .forEach((driver, index) => {
+        crashSlots.set(driver, index);
+      });
+
     return timelines
       .map((timeline) => {
         const sample = getSampleAtTime(timeline.samples, currentTime);
         if (!sample) {
           return null;
         }
+        const crashStart = crashStartTimes.get(timeline.driver);
+        const crashed = crashStart != null && currentTime >= crashStart;
+        if (crashed && CRASH_RENDER_MODE === "hide") {
+          return null;
+        }
+        const baseLabel = buildDriverLabel(
+          timeline.driver,
+          session?.sessionInfo?.date_start
+        );
         return {
           driver: timeline.driver,
           x: sample.x,
           y: sample.y,
-          color: getDriverColor(timeline.driver),
-          label: buildDriverLabel(
-            timeline.driver,
-            session?.sessionInfo?.date_start
-          ),
+          color: crashed ? "#9ca3af" : getDriverColor(timeline.driver),
+          label: crashed ? `${baseLabel} (OUT)` : baseLabel,
+          status: crashed ? "crashed" : "active",
+          crashSlot: crashed ? crashSlots.get(timeline.driver) : undefined,
         };
       })
       .filter((point): point is ReplayPoint => Boolean(point));
@@ -217,6 +271,7 @@ export function RaceReplayer() {
     currentTime,
     trackBounds,
     playbackRange,
+    crashStartTimes,
     session?.sessionInfo?.date_start,
   ]);
 
@@ -341,12 +396,13 @@ function buildDriverTimelines(
     if (!Number.isFinite(time)) {
       return;
     }
+    const speed = toNumber(sample.speed);
     const driver = Number(sample.driver_number);
     if (!Number.isFinite(driver)) {
       return;
     }
     const bucket = grouped.get(driver) ?? [];
-    bucket.push({ x, y, time });
+    bucket.push({ x, y, time, speed });
     grouped.set(driver, bucket);
   });
 
@@ -401,6 +457,191 @@ function computePlaybackRange(timelines: DriverTimeline[]) {
   }
 
   return { start, end };
+}
+
+type LapTiming = { time: number; lap: number };
+
+function buildLapTimeline(laps: LapRecord[]): Map<number, LapTiming[]> {
+  const map = new Map<number, LapTiming[]>();
+  laps.forEach((lap) => {
+    const driver = Number(lap.driver_number);
+    if (!Number.isFinite(driver)) {
+      return;
+    }
+    const time = Date.parse(lap.date_start ?? "");
+    if (!Number.isFinite(time)) {
+      return;
+    }
+    const lapNumber = Number(lap.lap_number);
+    if (!Number.isFinite(lapNumber)) {
+      return;
+    }
+    const bucket = map.get(driver) ?? [];
+    bucket.push({ time, lap: lapNumber });
+    map.set(driver, bucket);
+  });
+  map.forEach((entries) => entries.sort((a, b) => a.time - b.time));
+  return map;
+}
+
+function getLastLapBefore(laps: LapTiming[], time: number) {
+  let left = 0;
+  let right = laps.length - 1;
+  let best: LapTiming | null = null;
+
+  while (left <= right) {
+    const mid = Math.floor((left + right) / 2);
+    const candidate = laps[mid];
+    if (candidate.time <= time) {
+      best = candidate;
+      left = mid + 1;
+    } else {
+      right = mid - 1;
+    }
+  }
+
+  return best;
+}
+
+function computeCrashStartTime(
+  samples: DriverSample[],
+  laps: LapTiming[],
+  raceStartMs: number
+) {
+  if (samples.length < 2) {
+    return null;
+  }
+
+  const times = samples.map((sample) => sample.time);
+  const speeds = samples.map((sample) =>
+    typeof sample.speed === "number" && Number.isFinite(sample.speed)
+      ? sample.speed
+      : null
+  );
+
+  const distCum = new Array(samples.length).fill(0);
+  for (let i = 1; i < samples.length; i += 1) {
+    distCum[i] =
+      distCum[i - 1] +
+      Math.hypot(samples[i].x - samples[i - 1].x, samples[i].y - samples[i - 1].y);
+  }
+
+  const shortDeque: number[] = [];
+  const longDeque: number[] = [];
+  let shortStart = 0;
+  let longStart = 0;
+  let candidateStart: number | null = null;
+  let lapIdx = 0;
+  let lastLapTime = laps.length ? laps[0].time : raceStartMs;
+
+  const pushDeque = (deque: number[], idx: number) => {
+    const speed = speeds[idx];
+    if (speed == null) {
+      return;
+    }
+    while (deque.length && (speeds[deque[deque.length - 1]] ?? -Infinity) <= speed) {
+      deque.pop();
+    }
+    deque.push(idx);
+  };
+
+  const pruneDeque = (deque: number[], startIdx: number) => {
+    while (deque.length && deque[0] < startIdx) {
+      deque.shift();
+    }
+  };
+
+  for (let i = 0; i < samples.length; i += 1) {
+    const t = times[i];
+    if (!Number.isFinite(t)) {
+      continue;
+    }
+
+    while (lapIdx + 1 < laps.length && laps[lapIdx + 1].time <= t) {
+      lapIdx += 1;
+      lastLapTime = laps[lapIdx].time;
+    }
+
+    while (times[shortStart] < t - STOP_WINDOW_MS) {
+      shortStart += 1;
+    }
+    while (times[longStart] < t - CRASH_MIN_MS) {
+      longStart += 1;
+    }
+
+    pushDeque(shortDeque, i);
+    pushDeque(longDeque, i);
+    pruneDeque(shortDeque, shortStart);
+    pruneDeque(longDeque, longStart);
+
+    if (t - raceStartMs < PRE_START_GRACE_MS) {
+      candidateStart = null;
+      continue;
+    }
+
+    if (i - shortStart < 1) {
+      candidateStart = null;
+      continue;
+    }
+
+    const shortDist = distCum[i] - distCum[shortStart];
+    const shortHasSpeed = shortDeque.length > 0;
+    const shortMaxSpeed = shortHasSpeed ? speeds[shortDeque[0]] ?? 0 : null;
+    const shortStill = shortHasSpeed
+      ? (shortMaxSpeed ?? 0) < SPEED_LOW_KMH
+      : shortDist < STOP_DISTANCE;
+
+    if (!shortStill) {
+      candidateStart = null;
+      continue;
+    }
+
+    if (candidateStart == null) {
+      candidateStart = times[shortStart];
+    }
+
+    const lapStalled = t - lastLapTime >= LAP_STALL_MS;
+    if (!lapStalled) {
+      continue;
+    }
+
+    if (i - longStart < 1 || candidateStart == null) {
+      continue;
+    }
+
+    const longDist = distCum[i] - distCum[longStart];
+    const longHasSpeed = longDeque.length > 0;
+    const longMaxSpeed = longHasSpeed ? speeds[longDeque[0]] ?? 0 : null;
+    const longStill = longHasSpeed
+      ? (longMaxSpeed ?? 0) < SPEED_RECOVER_KMH
+      : longDist < CRASH_LONG_DISTANCE;
+
+    if (longStill && t - candidateStart >= CRASH_MIN_MS) {
+      return candidateStart;
+    }
+  }
+
+  return null;
+}
+
+function buildCrashStartTimes(
+  timelines: DriverTimeline[],
+  lapTimeline: Map<number, LapTiming[]>,
+  raceStartMs: number
+) {
+  const crashStartTimes = new Map<number, number | null>();
+  timelines.forEach((timeline) => {
+    const laps = lapTimeline.get(timeline.driver) ?? [];
+    const crashStart = computeCrashStartTime(
+      timeline.samples,
+      laps,
+      raceStartMs
+    );
+    if (crashStart != null) {
+      crashStartTimes.set(timeline.driver, crashStart);
+    }
+  });
+  return crashStartTimes;
 }
 
 function getSampleAtTime(samples: DriverSample[], time: number) {

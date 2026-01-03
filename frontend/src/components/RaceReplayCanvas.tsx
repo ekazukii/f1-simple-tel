@@ -7,6 +7,8 @@ export interface ReplayPoint {
   y: number
   color: string
   label: string
+  status?: 'active' | 'crashed'
+  crashSlot?: number
 }
 
 interface Bounds {
@@ -57,7 +59,10 @@ export function RaceReplayCanvas({ points, bounds, width = defaultWidth, height 
     ctx.textAlign = 'left'
     ctx.textBaseline = 'middle'
 
-    points.forEach((point) => {
+    const activePoints = points.filter((point) => point.status !== 'crashed')
+    const crashedPoints = points.filter((point) => point.status === 'crashed')
+
+    activePoints.forEach((point) => {
       const px = scaleX(point.x)
       const py = scaleY(point.y)
 
@@ -69,6 +74,32 @@ export function RaceReplayCanvas({ points, bounds, width = defaultWidth, height 
       ctx.fillStyle = '#0f172a'
       ctx.fillText(point.label, px + 10, py)
     })
+
+    if (crashedPoints.length) {
+      const padding = 20
+      const slotGap = 18
+      const baseX = width - 180
+      const baseY = height - padding
+
+      ctx.fillStyle = '#6b7280'
+      ctx.font = '11px "IBM Plex Sans", "Helvetica Neue", sans-serif'
+      ctx.textAlign = 'left'
+      ctx.textBaseline = 'bottom'
+      ctx.fillText('CRASHED', baseX, baseY - crashedPoints.length * slotGap - 8)
+
+      crashedPoints.forEach((point, index) => {
+        const slot = point.crashSlot ?? index
+        const y = baseY - slot * slotGap
+
+        ctx.fillStyle = '#9ca3af'
+        ctx.beginPath()
+        ctx.arc(baseX - 8, y - 4, 5, 0, Math.PI * 2)
+        ctx.fill()
+
+        ctx.fillStyle = '#6b7280'
+        ctx.fillText(point.label, baseX + 6, y)
+      })
+    }
   }, [points, bounds, width, height])
 
   const cx = (...names: string[]) => names.map((n) => styles[n]).filter(Boolean).join(' ')
