@@ -6,11 +6,12 @@ import type { LapRecord, OpenF1SessionData, RaceControlRecord } from "../types";
 import { fetchSession } from "../api/sessions";
 import type { SessionCatalogEntry } from "../utils/sessionCatalog";
 import { buildSessionOptions } from "../utils/sessionCatalog";
-import RaceReplayCanvas from "../components/RaceReplayCanvas";
+import RaceReplayCanvas, { type Bounds } from "../components/RaceReplayCanvas";
 import type { ReplayPoint } from "../components/RaceReplayCanvas";
 import ReplayPlayer, { type ReplayEvent } from "../components/ReplayPlayer";
 import { getDriverColor } from "../utils/teamColors";
 import { getDriverByNumberOnDate } from "../utils/drivers";
+import { fetchTrackLayout } from "../api/trackLayout";
 
 const SPEED_PRESETS = [0.1, 0.25, 0.5, 1, 2, 4, 10];
 const CRASH_RENDER_MODE: "park" | "hide" = "park";
@@ -43,6 +44,11 @@ type DownloadProgress = {
   totalBytes: number | null;
 };
 
+type TrackLayout = {
+  image: HTMLImageElement;
+  bounds: Bounds;
+};
+
 export function RaceReplayer() {
   const sessionOptions = useMemo(
     () => buildSessionOptions(sessionCatalog as SessionCatalogEntry[]),
@@ -62,6 +68,7 @@ export function RaceReplayer() {
   const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(
     null
   );
+  const [trackLayout, setTrackLayout] = useState<TrackLayout | null>(null);
   const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -108,8 +115,53 @@ export function RaceReplayer() {
     };
   }, [selectedSession]);
 
+  useEffect(() => {
+    const circuitKey = session?.sessionInfo?.circuit_key;
+    if (!circuitKey) {
+      setTrackLayout(null);
+      return;
+    }
+
+    let cancelled = false;
+    let objectUrl: string | null = null;
+
+    fetchTrackLayout(circuitKey)
+      .then((svgText) => {
+        if (!svgText || cancelled) {
+          return;
+        }
+        const bounds = parseViewBox(svgText);
+        if (!bounds) {
+          return;
+        }
+        const blob = new Blob([svgText], { type: "image/svg+xml" });
+        objectUrl = URL.createObjectURL(blob);
+        const image = new Image();
+        image.onload = () => {
+          if (cancelled) {
+            return;
+          }
+          setTrackLayout({ image, bounds });
+        };
+        image.src = objectUrl;
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setTrackLayout(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [session?.sessionInfo?.circuit_key]);
+
   const timelines = useMemo(() => buildDriverTimelines(session), [session]);
   const trackBounds = useMemo(() => computeBounds(timelines), [timelines]);
+  const displayBounds = trackLayout?.bounds ?? trackBounds;
   const playbackRange = useMemo(
     () => computePlaybackRange(timelines),
     [timelines]
@@ -224,7 +276,7 @@ export function RaceReplayer() {
   );
 
   const replayPoints = useMemo<ReplayPoint[]>(() => {
-    if (!playbackRange || !trackBounds) {
+    if (!playbackRange || !displayBounds) {
       return [];
     }
     const crashedDrivers = new Set<number>();
@@ -269,7 +321,7 @@ export function RaceReplayer() {
   }, [
     timelines,
     currentTime,
-    trackBounds,
+    displayBounds,
     playbackRange,
     crashStartTimes,
     session?.sessionInfo?.date_start,
@@ -310,9 +362,9 @@ export function RaceReplayer() {
       </header>
 
       {status.error && <div className={cx("status", "error")}>{status.error}</div>}
-      {session && trackBounds ? (
+      {session && displayBounds ? (
         <section className={cx("race-replay-panel")}>
-          <RaceReplayCanvas points={replayPoints} bounds={trackBounds} />
+          <RaceReplayCanvas points={replayPoints} bounds={displayBounds} layout={trackLayout ?? undefined} />
           <div className={cx("race-replay-controls")}>
             <div className={cx("playback-controls")}>
               <div className={cx("playback-time")}>
@@ -457,6 +509,27 @@ function computePlaybackRange(timelines: DriverTimeline[]) {
   }
 
   return { start, end };
+}
+
+function parseViewBox(svgText: string): Bounds | null {
+  const match = svgText.match(/viewBox="([^"]+)"/);
+  if (!match) {
+    return null;
+  }
+  const parts = match[1]
+    .trim()
+    .split(/[\s,]+/)
+    .map((part) => Number(part));
+  if (parts.length !== 4 || parts.some((value) => !Number.isFinite(value))) {
+    return null;
+  }
+  const [minX, minY, width, height] = parts;
+  return {
+    minX,
+    minY,
+    maxX: minX + width,
+    maxY: minY + height
+  };
 }
 
 type LapTiming = { time: number; lap: number };

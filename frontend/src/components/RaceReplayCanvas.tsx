@@ -11,7 +11,7 @@ export interface ReplayPoint {
   crashSlot?: number
 }
 
-interface Bounds {
+export interface Bounds {
   minX: number
   maxX: number
   minY: number
@@ -21,6 +21,7 @@ interface Bounds {
 interface RaceReplayCanvasProps {
   points: ReplayPoint[]
   bounds: Bounds | null
+  layout?: { image: HTMLImageElement; bounds: Bounds }
   width?: number
   height?: number
 }
@@ -28,12 +29,19 @@ interface RaceReplayCanvasProps {
 const defaultWidth = 960
 const defaultHeight = 540
 
-export function RaceReplayCanvas({ points, bounds, width = defaultWidth, height = defaultHeight }: RaceReplayCanvasProps) {
+export function RaceReplayCanvas({
+  points,
+  bounds,
+  layout,
+  width = defaultWidth,
+  height = defaultHeight
+}: RaceReplayCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
 
   useEffect(() => {
     const canvas = canvasRef.current
-    if (!canvas || !bounds) {
+    const scaleBounds = layout?.bounds ?? bounds
+    if (!canvas || !scaleBounds) {
       return
     }
 
@@ -51,13 +59,20 @@ export function RaceReplayCanvas({ points, bounds, width = defaultWidth, height 
     ctx.strokeRect(16, 16, width - 32, height - 32)
 
     const scaleX = (value: number) =>
-      32 + ((value - bounds.minX) / (bounds.maxX - bounds.minX || 1)) * (width - 64)
+      32 + ((value - scaleBounds.minX) / (scaleBounds.maxX - scaleBounds.minX || 1)) * (width - 64)
     const scaleY = (value: number) =>
-      32 + ((value - bounds.minY) / (bounds.maxY - bounds.minY || 1)) * (height - 64)
+      32 + ((value - scaleBounds.minY) / (scaleBounds.maxY - scaleBounds.minY || 1)) * (height - 64)
 
     ctx.font = '12px "IBM Plex Sans", "Helvetica Neue", sans-serif'
     ctx.textAlign = 'left'
     ctx.textBaseline = 'middle'
+
+    if (layout?.image) {
+      ctx.save()
+      ctx.globalAlpha = 0.35
+      ctx.drawImage(layout.image, 32, 32, width - 64, height - 64)
+      ctx.restore()
+    }
 
     const activePoints = points.filter((point) => point.status !== 'crashed')
     const crashedPoints = points.filter((point) => point.status === 'crashed')
@@ -100,7 +115,7 @@ export function RaceReplayCanvas({ points, bounds, width = defaultWidth, height 
         ctx.fillText(point.label, baseX + 6, y)
       })
     }
-  }, [points, bounds, width, height])
+  }, [points, bounds, layout, width, height])
 
   const cx = (...names: string[]) => names.map((n) => styles[n]).filter(Boolean).join(' ')
   return <canvas ref={canvasRef} width={width} height={height} className={cx('race-replay-canvas')} />

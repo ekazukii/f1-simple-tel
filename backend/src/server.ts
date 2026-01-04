@@ -195,6 +195,57 @@ router.get("/session/:key", async (ctx) => {
   }
 });
 
+router.get("/track-layout/:circuitKey", async (ctx) => {
+  const rawKey = ctx.params.circuitKey?.trim();
+  if (!rawKey || !/^\d+$/.test(rawKey)) {
+    ctx.status = 400;
+    ctx.body = { error: "Circuit key must be a numeric identifier" };
+    return;
+  }
+
+  const fileExists = async (candidate: string) => {
+    try {
+      await fs.access(candidate);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const cwd = process.cwd();
+  const candidateDirs = [
+    path.join(cwd, "assets", "track_heatmaps"),
+    path.join(cwd, "backend", "assets", "track_heatmaps"),
+    path.join(path.resolve(cwd, ".."), "backend", "assets", "track_heatmaps"),
+  ];
+  const fileName = `circuit_${rawKey}.svg`;
+  let filePath: string | null = null;
+
+  for (const dir of candidateDirs) {
+    const candidate = path.join(dir, fileName);
+    if (await fileExists(candidate)) {
+      filePath = candidate;
+      break;
+    }
+  }
+
+  if (!filePath) {
+    ctx.status = 404;
+    ctx.body = { error: "Track layout not found" };
+    return;
+  }
+
+  try {
+    const svg = await fs.readFile(filePath, "utf-8");
+    ctx.type = "image/svg+xml";
+    ctx.body = svg;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    ctx.status = 500;
+    ctx.body = { error: "Failed to read track layout", detail: message };
+  }
+});
+
 router.post("/simulation/strategy", async (ctx) => {
   let body: unknown;
   try {
