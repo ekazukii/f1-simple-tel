@@ -144,8 +144,25 @@ export interface StrategyComparisonOutput {
 
 export type StrategyComparisonEvent =
   | { event: 'start'; mode: 'strategy_comparison'; total_runs: number }
-  | { event: 'progress'; run: number; total_runs: number; wins?: Record<string, number> }
+  | {
+      event: 'progress';
+      run: number;
+      total_runs: number;
+      driver_id?: string | null;
+      wins?: Record<string, number>;
+      podiums?: Record<string, number>;
+      avg_finish?: Record<string, number>;
+    }
   | { event: 'result'; data: StrategyComparisonOutput }
+  | {
+      event: 'strategy_preview';
+      strategy: 'A' | 'B';
+      driver_id?: string | null;
+      entries: StrategyEntry[];
+      circuit_id?: string;
+      year?: number;
+      race_length?: number;
+    }
   | {
       event: 'auto_strategies';
       strategy: 'A' | 'B';

@@ -53,11 +53,28 @@ const DEFAULT_ONE_STOP_COMPOUNDS = ['MEDIUM', 'HARD']
 const DEFAULT_TWO_STOP_COMPOUNDS = ['SOFT', 'MEDIUM', 'MEDIUM']
 const DEFAULT_CIRCUIT_ID = 'monaco'
 const DEFAULT_RACE_LENGTH = CIRCUITS.find((circuit) => circuit.id === DEFAULT_CIRCUIT_ID)?.laps ?? 53
+const POINTS_BY_POSITION = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1]
 
 type StrategyStint = {
   compound: string
   pitMin: string
   pitMax: string
+}
+
+type TimelineSegment = {
+  compound: string
+  startLap: number
+  endLap: number
+  widthPct: number
+  compact: boolean
+}
+
+type StrategyStats = {
+  avgPos: number | null
+  avgPoints: number | null
+  wins: number
+  podiums: number
+  runs: number
 }
 
 const formatCircuitLabel = (value: string) =>
@@ -188,9 +205,130 @@ function buildStrategyEntries(stints: StrategyStint[], raceLength: number) {
   return { entries, errors, rowErrors }
 }
 
+function entriesToStints(entries: StrategyEntry[] | null | undefined): StrategyStint[] | null {
+  if (!entries || !entries.length) {
+    return null
+  }
+  const stints: StrategyStint[] = []
+  entries.forEach((entry, idx) => {
+    if (entry.length === 2) {
+      const compound = String(entry[1] ?? '').trim()
+      stints.push({ compound, pitMin: '', pitMax: '' })
+      return
+    }
+    if (entry.length === 3) {
+      const compound = String(entry[2] ?? '').trim()
+      stints.push({
+        compound,
+        pitMin: String(entry[0] ?? ''),
+        pitMax: String(entry[1] ?? '')
+      })
+      return
+    }
+    if (idx === 0) {
+      stints.push({ compound: 'MEDIUM', pitMin: '', pitMax: '' })
+    }
+  })
+  return stints.length ? stints : null
+}
+
 function compoundClassName(compound: string) {
-  const key = compound.trim().toLowerCase()
-  return key ? `compound-${key}` : 'compound-unknown'
+  const normalized = compound.trim().toUpperCase()
+  if (!normalized || !COMPOUND_OPTIONS.includes(normalized)) {
+    return 'compound-unknown'
+  }
+  return `compound-${normalized.toLowerCase()}`
+}
+
+function pointsForPosition(position: number) {
+  if (!Number.isFinite(position)) {
+    return 0
+  }
+  const idx = Math.round(position) - 1
+  if (idx < 0 || idx >= POINTS_BY_POSITION.length) {
+    return 0
+  }
+  return POINTS_BY_POSITION[idx]
+}
+
+function computeDriverStrategyStats(
+  summaryRows: Array<Record<string, unknown>>,
+  driverId: string,
+  strategy: 'A' | 'B'
+): StrategyStats {
+  if (!driverId) {
+    return { avgPos: null, avgPoints: null, wins: 0, podiums: 0, runs: 0 }
+  }
+  const rows = summaryRows.filter(
+    (row) => row.driver_id === driverId && row.strategy === strategy
+  )
+  const positions = rows
+    .map((row) => Number(row.finish_pos))
+    .filter((value) => Number.isFinite(value))
+  const runs = positions.length
+  if (!runs) {
+    return { avgPos: null, avgPoints: null, wins: 0, podiums: 0, runs: 0 }
+  }
+  const wins = positions.filter((pos) => pos === 1).length
+  const podiums = positions.filter((pos) => pos <= 3).length
+  const avgPos = positions.reduce((sum, value) => sum + value, 0) / runs
+  const avgPoints = positions.reduce((sum, pos) => sum + pointsForPosition(pos), 0) / runs
+  return { avgPos, avgPoints, wins, podiums, runs }
+}
+
+function buildLiveStrategyStats(
+  avgFinish: Record<string, number>,
+  wins: Record<string, number>,
+  podiums: Record<string, number>,
+  runs: number,
+  label: 'A' | 'B'
+): StrategyStats | null {
+  if (!runs) {
+    return null
+  }
+  const avgPos = Number.isFinite(avgFinish[label]) ? avgFinish[label] : null
+  return {
+    avgPos,
+    avgPoints: null,
+    wins: wins[label] ?? 0,
+    podiums: podiums[label] ?? 0,
+    runs
+  }
+}
+
+function buildTimelineSegments(stints: StrategyStint[], raceLength: number): TimelineSegment[] {
+  if (!stints.length || raceLength <= 0) {
+    return []
+  }
+
+  const pitLaps: number[] = []
+  let prevLap = 0
+  for (let i = 1; i < stints.length; i += 1) {
+    const minVal = Number(stints[i].pitMin)
+    const maxVal = Number(stints[i].pitMax)
+    let pitLap = Math.round((raceLength * i) / stints.length)
+    if (Number.isFinite(minVal) && Number.isFinite(maxVal) && minVal <= maxVal) {
+      pitLap = Math.round((minVal + maxVal) / 2)
+    }
+    pitLap = clampNumber(pitLap, prevLap + 1, raceLength - 1)
+    pitLaps.push(pitLap)
+    prevLap = pitLap
+  }
+
+  const bounds = [0, ...pitLaps, raceLength]
+  return stints.map((stint, idx) => {
+    const startLap = bounds[idx]
+    const endLap = bounds[idx + 1]
+    const span = Math.max(1, endLap - startLap)
+    const widthPct = (span / raceLength) * 100
+    return {
+      compound: stint.compound || '—',
+      startLap,
+      endLap,
+      widthPct,
+      compact: widthPct < 10
+    }
+  })
 }
 
 function formatValue(value: unknown, column: string) {
@@ -215,13 +353,20 @@ function StrategySimulator() {
   const [grid, setGrid] = useState('VER, LEC, HAM, RUS, GAS, HUL')
   const [safetyCarLaps, setSafetyCarLaps] = useState('17, 18')
   const [rainLaps, setRainLaps] = useState('')
+  const [showAdvanced, setShowAdvanced] = useState(false)
   const [controlledDriver, setControlledDriver] = useState('')
+  const [showSetup, setShowSetup] = useState(true)
   const [strategyAErrors, setStrategyAErrors] = useState<Record<number, string>>({})
   const [strategyBErrors, setStrategyBErrors] = useState<Record<number, string>>({})
+  const [liveStrategyA, setLiveStrategyA] = useState<StrategyStint[] | null>(null)
+  const [liveStrategyB, setLiveStrategyB] = useState<StrategyStint[] | null>(null)
 
   const [running, setRunning] = useState(false)
   const [progress, setProgress] = useState(0)
+  const [currentRun, setCurrentRun] = useState(0)
   const [wins, setWins] = useState<Record<string, number>>({})
+  const [podiums, setPodiums] = useState<Record<string, number>>({})
+  const [avgFinish, setAvgFinish] = useState<Record<string, number>>({})
   const [logLines, setLogLines] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<StrategyComparisonOutput | null>(null)
@@ -326,8 +471,33 @@ function StrategySimulator() {
   const handleEvent = (event: StrategyComparisonEvent) => {
     if (event.event === 'progress') {
       setProgress(event.total_runs ? event.run / event.total_runs : 0)
-      if (event.wins) {
-        setWins(event.wins)
+      if (Number.isFinite(event.run)) {
+        setCurrentRun(event.run)
+      }
+      const matchesDriver = !event.driver_id || event.driver_id === controlledDriver
+      if (matchesDriver) {
+        if (event.wins) {
+          setWins(event.wins)
+        }
+        if (event.podiums) {
+          setPodiums(event.podiums)
+        }
+        if (event.avg_finish) {
+          setAvgFinish(event.avg_finish)
+        }
+      }
+    } else if (event.event === 'strategy_preview') {
+      if (event.driver_id && event.driver_id !== controlledDriver) {
+        return
+      }
+      const stints = entriesToStints(event.entries)
+      if (!stints) {
+        return
+      }
+      if (event.strategy === 'A') {
+        setLiveStrategyA(stints)
+      } else {
+        setLiveStrategyB(stints)
       }
     } else if (event.event === 'auto_strategies') {
       const items = event.strategies
@@ -340,6 +510,7 @@ function StrategySimulator() {
       setLogLines((prev) => [header, ...prev].slice(0, 40))
     } else if (event.event === 'result') {
       setResult(event.data)
+      setShowSetup(false)
     } else if (event.event === 'error') {
       setError(event.message)
     } else if (event.event === 'stderr' || event.event === 'log') {
@@ -359,6 +530,7 @@ function StrategySimulator() {
       .slice(1)
       .map((stint) => (stint.pitMin && stint.pitMax ? `${stint.pitMin}-${stint.pitMax}` : '—'))
       .join(', ')
+    const timeline = buildTimelineSegments(stints, raceLength)
 
     return (
       <div className={cx('strategy-card')}>
@@ -388,7 +560,7 @@ function StrategySimulator() {
             className={cx('chip-button')}
             onClick={() => addStint(stints, setStints, setErrors)}
           >
-            Add stint
+            Add pit stop
           </button>
           <button
             type="button"
@@ -396,14 +568,16 @@ function StrategySimulator() {
             onClick={() => removeStint(stints, setStints, setErrors)}
             disabled={stints.length <= 2}
           >
-            Remove last
+            Remove last stop
           </button>
         </div>
         <div className={cx('stint-list')}>
           {stints.map((stint, idx) => (
             <div key={`${label}-stint-${idx}`}>
               <div className={cx('stint-row', rowErrors[idx] ? 'stint-error' : '')}>
-                <span className={cx('stint-label')}>Stint {idx + 1}</span>
+                <span className={cx('stint-label')}>
+                  {idx === 0 ? 'Starting tyres' : `Pit stop ${idx}`}
+                </span>
                 <select
                   value={stint.compound}
                   onChange={(event) =>
@@ -417,28 +591,33 @@ function StrategySimulator() {
                   ))}
                 </select>
                 {idx === 0 ? (
-                  <span className={cx('muted')}>Start</span>
+                  <span className={cx('muted')}>Start lap 0</span>
                 ) : (
                   <div className={cx('pit-window')}>
-                    <input
-                      type="number"
-                      value={stint.pitMin}
-                      onChange={(event) =>
-                        updateStintField(stints, setStints, setErrors, idx, 'pitMin', event.target.value)
-                      }
-                      min={2}
-                      max={raceLength - 1}
-                    />
-                    <span className={cx('muted')}>to</span>
-                    <input
-                      type="number"
-                      value={stint.pitMax}
-                      onChange={(event) =>
-                        updateStintField(stints, setStints, setErrors, idx, 'pitMax', event.target.value)
-                      }
-                      min={2}
-                      max={raceLength - 1}
-                    />
+                    <span className={cx('pit-window__label')}>Pit window (lap from-to)</span>
+                    <div className={cx('pit-window__inputs')}>
+                      <input
+                        type="number"
+                        aria-label="Pit window from lap"
+                        value={stint.pitMin}
+                        onChange={(event) =>
+                          updateStintField(stints, setStints, setErrors, idx, 'pitMin', event.target.value)
+                        }
+                        min={2}
+                        max={raceLength - 1}
+                      />
+                      <span className={cx('muted')}>to</span>
+                      <input
+                        type="number"
+                        aria-label="Pit window to lap"
+                        value={stint.pitMax}
+                        onChange={(event) =>
+                          updateStintField(stints, setStints, setErrors, idx, 'pitMax', event.target.value)
+                        }
+                        min={2}
+                        max={raceLength - 1}
+                      />
+                    </div>
                   </div>
                 )}
               </div>
@@ -447,11 +626,17 @@ function StrategySimulator() {
           ))}
         </div>
         <div className={cx('strategy-preview')}>
-          <div className={cx('compound-preview')}>
-            {stints.map((stint, idx) => (
-              <span key={`${label}-chip-${idx}`} className={cx('compound-chip', compoundClassName(stint.compound))}>
-                {stint.compound || '—'}
-              </span>
+          <div className={cx('strategy-timeline')} role="presentation">
+            {timeline.map((segment, idx) => (
+              <div
+                key={`${label}-segment-${idx}`}
+                className={cx('timeline-segment', compoundClassName(segment.compound))}
+                style={{ width: `${segment.widthPct}%` }}
+                data-compact={segment.compact}
+                title={`${segment.compound} ${segment.startLap}-${segment.endLap}`}
+              >
+                <span>{segment.compound}</span>
+              </div>
             ))}
           </div>
           <span className={cx('muted')}>
@@ -462,12 +647,69 @@ function StrategySimulator() {
     )
   }
 
+  const renderStrategySummary = (
+    label: string,
+    stints: StrategyStint[],
+    stats: StrategyStats | null
+  ) => {
+    const stopCount = Math.max(0, stints.length - 1)
+    const pitWindows = stints
+      .slice(1)
+      .map((stint) => (stint.pitMin && stint.pitMax ? `${stint.pitMin}-${stint.pitMax}` : '—'))
+      .join(', ')
+    const timeline = buildTimelineSegments(stints, raceLength)
+
+    return (
+      <div className={cx('strategy-card', 'strategy-card--summary')}>
+        <div className={cx('strategy-header')}>
+          <strong>{label}</strong>
+          <span className={cx('muted')}>
+            {stopCount} stop{stopCount === 1 ? '' : 's'}
+          </span>
+        </div>
+        <div className={cx('strategy-preview')}>
+          <div className={cx('strategy-timeline')} role="presentation">
+            {timeline.map((segment, idx) => (
+              <div
+                key={`${label}-summary-${idx}`}
+                className={cx('timeline-segment', compoundClassName(segment.compound))}
+                style={{ width: `${segment.widthPct}%` }}
+                data-compact={segment.compact}
+                title={`${segment.compound} ${segment.startLap}-${segment.endLap}`}
+              >
+                <span>{segment.compound}</span>
+              </div>
+            ))}
+          </div>
+          <span className={cx('muted')}>Pit windows: {pitWindows || '—'}</span>
+          {stats && stats.runs ? (
+            <div className={cx('strategy-stats')}>
+              <span>
+                Avg pos {stats.avgPos != null ? stats.avgPos.toFixed(2) : '—'}
+                {stats.avgPoints != null ? ` (${stats.avgPoints.toFixed(1)} pts)` : ''}
+              </span>
+              <span>Wins {stats.wins}</span>
+              <span>Podiums {stats.podiums}</span>
+            </div>
+          ) : (
+            <span className={cx('muted')}>No stats available yet.</span>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   const runSimulation = async () => {
     setError(null)
     setResult(null)
     setLogLines([])
     setWins({})
+    setPodiums({})
+    setAvgFinish({})
     setProgress(0)
+    setCurrentRun(0)
+    setLiveStrategyA(null)
+    setLiveStrategyB(null)
     setStrategyAErrors({})
     setStrategyBErrors({})
 
@@ -519,6 +761,7 @@ function StrategySimulator() {
 
     const controller = new AbortController()
     abortRef.current = controller
+    setShowSetup(false)
     setRunning(true)
 
     try {
@@ -527,9 +770,11 @@ function StrategySimulator() {
         onEvent: handleEvent
       })
       setResult(output)
+      setShowSetup(false)
     } catch (err) {
       if (!controller.signal.aborted) {
         setError(err instanceof Error ? err.message : 'Simulation failed.')
+        setShowSetup(true)
       }
     } finally {
       setRunning(false)
@@ -540,7 +785,30 @@ function StrategySimulator() {
   const stopSimulation = () => {
     abortRef.current?.abort()
     setRunning(false)
+    setShowSetup(true)
   }
+
+  const resetSimulationView = () => {
+    stopSimulation()
+    setResult(null)
+    setError(null)
+    setLogLines([])
+    setProgress(0)
+    setWins({})
+    setPodiums({})
+    setAvgFinish({})
+    setCurrentRun(0)
+    setLiveStrategyA(null)
+    setLiveStrategyB(null)
+    setStrategyAErrors({})
+    setStrategyBErrors({})
+    setShowSetup(true)
+  }
+
+  const summaryStrategyA = liveStrategyA ?? strategyAStints
+  const summaryStrategyB = liveStrategyB ?? strategyBStints
+  const liveStatsA = buildLiveStrategyStats(avgFinish, wins, podiums, currentRun, 'A')
+  const liveStatsB = buildLiveStrategyStats(avgFinish, wins, podiums, currentRun, 'B')
 
   return (
     <div className={cx('app')}>
@@ -554,158 +822,241 @@ function StrategySimulator() {
         </div>
       </section>
 
-      <section className={cx('panel')}>
-        <div className={cx('panel-title')}>
-          <strong>Simulation setup</strong>
-          <span className={cx('muted')}>Race settings and engine controls.</span>
-        </div>
-        <div className={cx('form-grid')}>
-          <div className={cx('field')}>
-            <label>Circuit ID</label>
-            <select value={circuitId} onChange={(event) => setCircuitId(event.target.value)}>
-              {CIRCUITS.map((circuit) => (
-                <option key={circuit.id} value={circuit.id}>
-                  {formatCircuitLabel(circuit.id)}
-                </option>
-              ))}
-            </select>
-            <small className={cx('muted')}>Race length: {raceLength} laps</small>
-          </div>
-          <div className={cx('field')}>
-            <label>Year</label>
-            <select value={year} onChange={(event) => setYear(event.target.value)}>
-              {YEAR_OPTIONS.map((yearOption) => (
-                <option key={yearOption} value={yearOption}>
-                  {yearOption}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className={cx('field')}>
-            <label>Grid (comma-separated)</label>
-            <input value={grid} onChange={(event) => setGrid(event.target.value)} />
-          </div>
-          <div className={cx('field')}>
-            <label>Simulation runs</label>
-            <div className={cx('pill')}>{NUM_RUNS} runs · update every {UPDATE_EVERY}</div>
-          </div>
-          <div className={cx('field')}>
-            <label>Safety car laps</label>
-            <input value={safetyCarLaps} onChange={(event) => setSafetyCarLaps(event.target.value)} />
-          </div>
-          <div className={cx('field')}>
-            <label>Rain laps</label>
-            <input value={rainLaps} onChange={(event) => setRainLaps(event.target.value)} />
-          </div>
-        </div>
-        <div className={cx('row')}>
-          <button className={cx('button')} onClick={runSimulation} disabled={running}>
-            {running ? 'Running...' : 'Run Simulation'}
-          </button>
-          <button className={cx('button', 'ghost')} onClick={stopSimulation} disabled={!running}>
-            Stop
-          </button>
-          {Object.keys(wins).length > 0 && (
-            <span className={cx('pill')}>Wins A: {wins.A ?? 0} · Wins B: {wins.B ?? 0}</span>
-          )}
-        </div>
-        <div className={cx('progress')}>
-          <span style={{ width: `${Math.round(progress * 100)}%` }} />
-        </div>
-        {error && <div className={cx('status', 'error')}>{error}</div>}
-      </section>
-
-      <section className={cx('panel')}>
-        <div className={cx('panel-title')}>
-          <strong>Driver strategy comparison</strong>
-          <span className={cx('muted')}>Pick one driver to control and define Strategy A/B.</span>
-        </div>
-        <div className={cx('form-grid')}>
-          <div className={cx('field')}>
-            <label>Controlled driver</label>
-            <select
-              value={controlledDriver}
-              onChange={(event) => setControlledDriver(event.target.value)}
-              disabled={!gridDrivers.length}
-            >
-              {gridDrivers.map((driver) => (
-                <option key={driver} value={driver}>
-                  {driver}
-                </option>
-              ))}
-            </select>
-            <small className={cx('muted')}>Only this driver uses A/B strategies; everyone else is auto.</small>
-          </div>
-          <div className={cx('field')}>
-            <label>Copy strategies</label>
-            <div className={cx('row')}>
-              <button
-                type="button"
-                className={cx('button', 'ghost')}
-                onClick={() => updateStints(strategyAStints, setStrategyBStints, setStrategyBErrors)}
-              >
-                Copy A → B
-              </button>
-              <button
-                type="button"
-                className={cx('button', 'ghost')}
-                onClick={() => updateStints(strategyBStints, setStrategyAStints, setStrategyAErrors)}
-              >
-                Copy B → A
-              </button>
+      {showSetup ? (
+        <>
+          <section className={cx('panel')}>
+            <div className={cx('panel-title')}>
+              <strong>Simulation setup</strong>
+              <span className={cx('muted')}>Race settings and engine controls.</span>
             </div>
-          </div>
-        </div>
-        <div className={cx('strategy-grid')}>
-          {renderStrategyPanel('Strategy A', strategyAStints, setStrategyAStints, strategyAErrors, setStrategyAErrors)}
-          {renderStrategyPanel('Strategy B', strategyBStints, setStrategyBStints, strategyBErrors, setStrategyBErrors)}
-        </div>
-      </section>
-
-      <section className={cx('panel')}>
-        <div className={cx('panel-title')}>
-          <strong>Live logs</strong>
-          <span className={cx('muted')}>Streaming updates from the simulation CLI.</span>
-        </div>
-        <div className={cx('log')}>
-          {logLines.length ? (
-            logLines.map((line, idx) => <div key={`${line}-${idx}`}>{line}</div>)
-          ) : (
-            <div className={cx('muted')}>No logs yet.</div>
-          )}
-        </div>
-      </section>
-
-      <section className={cx('panel')}>
-        <div className={cx('panel-title')}>
-          <strong>Strategy comparison results</strong>
-          <span className={cx('muted')}>Summary table from the latest run.</span>
-        </div>
-        {result ? (
-          <div className={cx('table-wrapper')}>
-            <table className={cx('table')}>
-              <thead>
-                <tr>
-                  {columns.map((col) => (
-                    <th key={col}>{col.replace(/_/g, ' ')}</th>
+            <div className={cx('form-grid', 'form-grid--compact')}>
+              <div className={cx('field')}>
+                <label>Circuit ID</label>
+                <select value={circuitId} onChange={(event) => setCircuitId(event.target.value)}>
+                  {CIRCUITS.map((circuit) => (
+                    <option key={circuit.id} value={circuit.id}>
+                      {formatCircuitLabel(circuit.id)}
+                    </option>
                   ))}
-                </tr>
-              </thead>
-              <tbody>
-                {summaryRows.map((row) => (
-                  <tr key={String(row.driver_id ?? Math.random())}>
-                    {columns.map((col) => (
-                      <td key={col}>{formatValue(row[col], col)}</td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <p className={cx('muted')}>Run a simulation to populate the results table.</p>
-        )}
-      </section>
+                </select>
+                <small className={cx('muted')}>Race length: {raceLength} laps</small>
+              </div>
+              <div className={cx('field')}>
+                <label>Year</label>
+                <select value={year} onChange={(event) => setYear(event.target.value)}>
+                  {YEAR_OPTIONS.map((yearOption) => (
+                    <option key={yearOption} value={yearOption}>
+                      {yearOption}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <button
+              type="button"
+              className={cx('advanced-toggle')}
+              onClick={() => setShowAdvanced((prev) => !prev)}
+            >
+              {showAdvanced ? 'Hide advanced options' : 'Show advanced options'}
+            </button>
+            {showAdvanced && (
+              <div className={cx('form-grid', 'form-grid--advanced')}>
+                <div className={cx('field')}>
+                  <label>Grid (comma-separated)</label>
+                  <input value={grid} onChange={(event) => setGrid(event.target.value)} />
+                </div>
+                <div className={cx('field')}>
+                  <label>Safety car laps</label>
+                  <input value={safetyCarLaps} onChange={(event) => setSafetyCarLaps(event.target.value)} />
+                </div>
+                <div className={cx('field')}>
+                  <label>Rain laps</label>
+                  <input value={rainLaps} onChange={(event) => setRainLaps(event.target.value)} />
+                </div>
+                <div className={cx('field')}>
+                  <label>Simulation runs</label>
+                  <div className={cx('pill')}>{NUM_RUNS} runs · update every {UPDATE_EVERY}</div>
+                </div>
+              </div>
+            )}
+            <div className={cx('row')}>
+              <button className={cx('button')} onClick={runSimulation} disabled={running}>
+                {running ? 'Running...' : 'Run Simulation'}
+              </button>
+              <button className={cx('button', 'ghost')} onClick={stopSimulation} disabled={!running}>
+                Stop
+              </button>
+              {Object.keys(wins).length > 0 && (
+                <span className={cx('pill')}>Wins A: {wins.A ?? 0} · Wins B: {wins.B ?? 0}</span>
+              )}
+            </div>
+            <div className={cx('progress')}>
+              <span style={{ width: `${Math.round(progress * 100)}%` }} />
+            </div>
+            {error && <div className={cx('status', 'error')}>{error}</div>}
+          </section>
+
+          <section className={cx('panel')}>
+            <div className={cx('panel-title')}>
+              <strong>Driver strategy comparison</strong>
+              <span className={cx('muted')}>Pick one driver to control and define Strategy A/B.</span>
+            </div>
+            <div className={cx('form-grid')}>
+              <div className={cx('field')}>
+                <label>Controlled driver</label>
+                <select
+                  value={controlledDriver}
+                  onChange={(event) => setControlledDriver(event.target.value)}
+                  disabled={!gridDrivers.length}
+                >
+                  {gridDrivers.map((driver) => (
+                    <option key={driver} value={driver}>
+                      {driver}
+                    </option>
+                  ))}
+                </select>
+                <small className={cx('muted')}>Only this driver uses A/B strategies; everyone else is auto.</small>
+              </div>
+              <div className={cx('field')}>
+                <label>Copy strategies</label>
+                <div className={cx('row')}>
+                  <button
+                    type="button"
+                    className={cx('button', 'ghost')}
+                    onClick={() => updateStints(strategyAStints, setStrategyBStints, setStrategyBErrors)}
+                  >
+                    Copy A → B
+                  </button>
+                  <button
+                    type="button"
+                    className={cx('button', 'ghost')}
+                    onClick={() => updateStints(strategyBStints, setStrategyAStints, setStrategyAErrors)}
+                  >
+                    Copy B → A
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div className={cx('strategy-grid')}>
+              {renderStrategyPanel('Strategy A', strategyAStints, setStrategyAStints, strategyAErrors, setStrategyAErrors)}
+              {renderStrategyPanel('Strategy B', strategyBStints, setStrategyBStints, strategyBErrors, setStrategyBErrors)}
+            </div>
+          </section>
+        </>
+      ) : (
+        <>
+          {!result ? (
+            <section className={cx('panel')}>
+              <div className={cx('panel-title')}>
+                <strong>Live simulation results</strong>
+                <span className={cx('muted')}>Circuit, strategy summary, and progress updates.</span>
+              </div>
+              <div className={cx('summary-meta')}>
+                <span className={cx('pill')}>
+                  {formatCircuitLabel(circuitId)} ({circuitId}) · {year}
+                </span>
+                <span className={cx('pill')}>{raceLength} laps</span>
+                <span className={cx('pill')}>Driver: {controlledDriver || '—'}</span>
+              </div>
+              <div className={cx('strategy-grid')}>
+                {renderStrategySummary(
+                  'Strategy A',
+                  summaryStrategyA,
+                  liveStatsA
+                )}
+                {renderStrategySummary(
+                  'Strategy B',
+                  summaryStrategyB,
+                  liveStatsB
+                )}
+              </div>
+              <div className={cx('row')}>
+                <button className={cx('button', 'ghost')} onClick={stopSimulation} disabled={!running}>
+                  Stop simulation
+                </button>
+                {running && (
+                  <span className={cx('muted')}>
+                    {Math.round(progress * 100)}% complete
+                  </span>
+                )}
+              </div>
+              {running && (
+                <div className={cx('progress')}>
+                  <span style={{ width: `${Math.round(progress * 100)}%` }} />
+                </div>
+              )}
+            </section>
+          ) : (
+            <>
+              <section className={cx('panel')}>
+                <div className={cx('panel-title')}>
+                  <strong>Simulation summary</strong>
+                  <span className={cx('muted')}>Circuit, year, and strategy overview.</span>
+                </div>
+                <div className={cx('summary-meta')}>
+                  <span className={cx('pill')}>
+                    {formatCircuitLabel(circuitId)} ({circuitId}) · {year}
+                  </span>
+                  <span className={cx('pill')}>{raceLength} laps</span>
+                  <span className={cx('pill')}>Driver: {controlledDriver || '—'}</span>
+                </div>
+                <div className={cx('strategy-grid')}>
+                  {renderStrategySummary(
+                    'Strategy A',
+                    summaryStrategyA,
+                    computeDriverStrategyStats(
+                      result.strategy_comparison.summary_comp_df ?? [],
+                      controlledDriver,
+                      'A'
+                    )
+                  )}
+                  {renderStrategySummary(
+                    'Strategy B',
+                    summaryStrategyB,
+                    computeDriverStrategyStats(
+                      result.strategy_comparison.summary_comp_df ?? [],
+                      controlledDriver,
+                      'B'
+                    )
+                  )}
+                </div>
+              </section>
+
+              <section className={cx('panel')}>
+                <div className={cx('panel-title')}>
+                  <strong>Strategy comparison results</strong>
+                  <span className={cx('muted')}>Summary table from the latest run.</span>
+                </div>
+                <div className={cx('row')}>
+                  <button className={cx('button')} onClick={resetSimulationView}>
+                    Create new simulation
+                  </button>
+                </div>
+                <div className={cx('table-wrapper')}>
+                  <table className={cx('table')}>
+                    <thead>
+                      <tr>
+                        {columns.map((col) => (
+                          <th key={col}>{col.replace(/_/g, ' ')}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {summaryRows.map((row) => (
+                        <tr key={String(row.driver_id ?? Math.random())}>
+                          {columns.map((col) => (
+                            <td key={col}>{formatValue(row[col], col)}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </>
+          )}
+        </>
+      )}
     </div>
   )
 }

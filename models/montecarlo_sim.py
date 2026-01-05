@@ -1220,6 +1220,14 @@ class MonteCarloSimulator:
         }
 
         all_custom_drivers = sorted(set(custom_drivers.get("A", []) + custom_drivers.get("B", [])))
+        focus_driver = None
+        a_keys = set(custom_drivers.get("A", []))
+        b_keys = set(custom_drivers.get("B", []))
+        shared_keys = a_keys & b_keys
+        if shared_keys:
+            focus_driver = sorted(shared_keys)[0]
+        elif a_keys or b_keys:
+            focus_driver = sorted(a_keys | b_keys)[0]
 
         custom_sum = {
             label: {drv: np.zeros(race_length) for drv in all_custom_drivers}
@@ -1276,6 +1284,36 @@ class MonteCarloSimulator:
                             "strategy": "B",
                             **preview_b,
                         })
+
+        if progress_callback is not None:
+            preview_configs = [
+                ("A", strategy_a_global, strategy_a_driver),
+                ("B", strategy_b_global, strategy_b_driver),
+            ]
+            for label, glob_strat, driver_strats in preview_configs:
+                if driver_strats:
+                    for driver_id, entries in driver_strats.items():
+                        if entries is None:
+                            continue
+                        progress_callback({
+                            "event": "strategy_preview",
+                            "strategy": label,
+                            "driver_id": driver_id,
+                            "entries": entries,
+                            "circuit_id": chosen_circuit,
+                            "year": chosen_year,
+                            "race_length": race_length,
+                        })
+                elif glob_strat is not None:
+                    progress_callback({
+                        "event": "strategy_preview",
+                        "strategy": label,
+                        "driver_id": None,
+                        "entries": glob_strat,
+                        "circuit_id": chosen_circuit,
+                        "year": chosen_year,
+                        "race_length": race_length,
+                    })
 
         run_iter = range(num_runs_compare)
         if from_notebook:
@@ -1486,12 +1524,23 @@ class MonteCarloSimulator:
                             plt.show()
 
                 if progress_callback is not None:
-                    wins_dict = wins.to_dict() if wins is not None else {}
+                    scope_df = summary_comp_df
+                    if focus_driver is not None:
+                        scope_df = summary_comp_df[summary_comp_df["driver_id"] == focus_driver]
+                    wins_counts = scope_df[scope_df["finish_pos"] == 1].groupby("strategy")["driver_id"].count()
+                    wins_dict = wins_counts.to_dict() if wins_counts is not None else {}
+                    podiums_counts = scope_df[scope_df["finish_pos"] <= 3].groupby("strategy")["driver_id"].count()
+                    podiums_dict = podiums_counts.to_dict() if podiums_counts is not None else {}
+                    avg_pos_series = scope_df.groupby("strategy")["finish_pos"].mean()
+                    avg_pos_dict = avg_pos_series.to_dict() if avg_pos_series is not None else {}
                     progress_callback({
                         "event": "progress",
                         "run": run + 1,
                         "total_runs": num_runs_compare,
+                        "driver_id": focus_driver,
                         "wins": {k: int(v) for k, v in wins_dict.items()},
+                        "podiums": {k: int(v) for k, v in podiums_dict.items()},
+                        "avg_finish": {k: float(v) for k, v in avg_pos_dict.items()},
                     })
 
         summary_comp_df = pd.DataFrame(summary_comp)
