@@ -15,6 +15,7 @@ export interface TimelineRow {
   driver: number;
   stints: StintSegment[];
   sessionDate: string;
+  label?: string;
 }
 
 export interface LapCompoundPoint {

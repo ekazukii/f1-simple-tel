@@ -1,4 +1,5 @@
 import Koa from "koa";
+import { randomInt } from "node:crypto";
 import Router from "@koa/router";
 import { spawn } from "child_process";
 import { promises as fs } from "fs";
@@ -7,8 +8,8 @@ import path from "path";
 import { db, initializeDatabase } from "./database";
 
 const DEFAULT_PORT = 4000;
-const STRATEGY_NUM_RUNS = 50;
-const STRATEGY_UPDATE_EVERY = 10;
+const STRATEGY_NUM_RUNS = 10;
+const STRATEGY_UPDATE_EVERY = 2;
 const STRATEGY_NOISE_SCALE = 0.5;
 
 const parsedPort = Number(process.env.PORT);
@@ -167,9 +168,11 @@ app.use(async (ctx, next) => {
 
 router.get("/session/:key", async (ctx) => {
   const sessionKey = ctx.params.key?.trim();
-  const sampleSecondsRaw = ctx.query.sampleSeconds ?? ctx.query.sample ?? ctx.query.s;
+  const sampleSecondsRaw =
+    ctx.query.sampleSeconds ?? ctx.query.sample ?? ctx.query.s;
   const parsedSample = Number(sampleSecondsRaw);
-  const sampleSeconds = Number.isFinite(parsedSample) && parsedSample > 0 ? parsedSample : null;
+  const sampleSeconds =
+    Number.isFinite(parsedSample) && parsedSample > 0 ? parsedSample : null;
 
   if (!sessionKey) {
     ctx.status = 400;
@@ -314,10 +317,24 @@ router.post("/simulation/strategy", async (ctx) => {
   paths.safety_path ??= await resolveModelPath("safety_car_model.joblib");
 
   const incomingOptions = payload.options ?? {};
+  const rawSeed = incomingOptions.seed;
+  let seed: number | undefined;
+  if (typeof rawSeed === "number" && Number.isFinite(rawSeed)) {
+    seed = Math.trunc(rawSeed);
+  } else if (typeof rawSeed === "string" && rawSeed.trim()) {
+    const parsed = Number(rawSeed);
+    if (Number.isFinite(parsed)) {
+      seed = Math.trunc(parsed);
+    }
+  }
+  if (seed == null) {
+    seed = randomInt(0, 1_000_000_000);
+  }
   const incomingStrategy = payload.strategy ?? {};
   const options = {
     ...incomingOptions,
     noise_scale: STRATEGY_NOISE_SCALE,
+    seed,
   };
   const strategy = {
     ...incomingStrategy,
@@ -337,14 +354,11 @@ router.post("/simulation/strategy", async (ctx) => {
 
   const scriptPath = path.join(modelsDir, "montecarlo_sim.py");
   const pythonBin = process.env.PYTHON_BIN ?? "python3";
-  const child = spawn(pythonBin, [
-    scriptPath,
-    "--strategy",
-    "--input",
-    inputPath,
-    "--output",
-    outputPath,
-  ], { cwd: repoRoot });
+  const child = spawn(
+    pythonBin,
+    [scriptPath, "--strategy", "--input", inputPath, "--output", outputPath],
+    { cwd: repoRoot }
+  );
 
   ctx.respond = false;
   ctx.res.writeHead(200, {
@@ -406,7 +420,9 @@ router.post("/simulation/strategy", async (ctx) => {
       sendLine(stdoutBuffer.trim());
     }
     if (code !== 0) {
-      handleProcessError(`Simulation failed with exit code ${code ?? "unknown"}`);
+      handleProcessError(
+        `Simulation failed with exit code ${code ?? "unknown"}`
+      );
       return;
     }
     try {
@@ -785,7 +801,9 @@ async function fetchLaps(sessionKey: number): Promise<LapRow[]> {
   }));
 }
 
-async function fetchWeatherSamples(sessionKey: number): Promise<WeatherSampleRow[]> {
+async function fetchWeatherSamples(
+  sessionKey: number
+): Promise<WeatherSampleRow[]> {
   const rows = (await db`
     SELECT
       recorded_at,

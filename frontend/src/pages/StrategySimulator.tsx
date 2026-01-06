@@ -1,12 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import sharedStyles from '../styles/Shared.module.css'
 import styles from '../styles/StrategySimulator.module.css'
+import insightsStyles from '../styles/SessionInsights.module.css'
 import { runStrategySimulation } from '../api/strategySimulation'
 import type { StrategyComparisonEvent, StrategyComparisonInput, StrategyComparisonOutput, StrategyEntry } from '../types'
+import { StintTimeline } from '../components/insights/StintTimeline'
+import type { TimelineRow, StintSegment } from '../components/insights/types'
+import { COMPOUND_COLORS as INSIGHTS_COMPOUND_COLORS } from '../components/insights/theme'
+import {
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis
+} from 'recharts'
 
 const cx = (...names: string[]) =>
   names
-    .map((n) => styles[n] || sharedStyles[n])
+    .map((n) => styles[n] || sharedStyles[n] || insightsStyles[n])
     .filter(Boolean)
     .join(' ')
 
@@ -75,6 +88,29 @@ type StrategyStats = {
   wins: number
   podiums: number
   runs: number
+}
+
+type AutoStrategyPreview = {
+  sequence: string
+  avg_pit_laps: Array<number | null>
+  probability: number
+}
+
+type LapTimeSeries = {
+  driver_id: string | null
+  laps: number[]
+  driver: {
+    A: Array<number | null>
+    B: Array<number | null>
+  }
+  others: Array<number | null>
+}
+
+type PositionSeries = {
+  driver_id: string | null
+  laps: number[]
+  A: Array<number | null>
+  B: Array<number | null>
 }
 
 const formatCircuitLabel = (value: string) =>
@@ -331,6 +367,204 @@ function buildTimelineSegments(stints: StrategyStint[], raceLength: number): Tim
   })
 }
 
+function normalizeSequencePart(part: string) {
+  const normalized = part.trim().toUpperCase()
+  if (!normalized) {
+    return ''
+  }
+  if (COMPOUND_OPTIONS.includes(normalized)) {
+    return normalized
+  }
+  const map: Record<string, string> = {
+    S: 'SOFT',
+    M: 'MEDIUM',
+    H: 'HARD',
+    I: 'INTER',
+    W: 'WET'
+  }
+  return map[normalized] ?? normalized
+}
+
+function parseStrategySequence(sequence: string) {
+  return sequence
+    .split('-')
+    .map((part) => normalizeSequencePart(part))
+    .filter(Boolean)
+}
+
+function buildStintSegmentsFromSequence(
+  sequence: string[],
+  avgPitLaps: Array<number | null>,
+  raceLength: number,
+  driver: number
+): StintSegment[] {
+  if (!sequence.length || raceLength <= 0) {
+    return []
+  }
+
+  const stopCount = Math.max(sequence.length - 1, 0)
+  const pitLaps: number[] = []
+  for (let idx = 0; idx < stopCount; idx += 1) {
+    const value = avgPitLaps[idx]
+    const fallback = (raceLength * (idx + 1)) / (stopCount + 1)
+    const rawLap = Number.isFinite(value) ? Number(value) : fallback
+    pitLaps.push(Math.round(rawLap))
+  }
+
+  let prevEnd = 0
+  const segments: StintSegment[] = []
+  sequence.forEach((compound, idx) => {
+    let endLap = raceLength
+    if (idx < pitLaps.length) {
+      endLap = clampNumber(pitLaps[idx], prevEnd + 1, raceLength - 1)
+    }
+    const startLap = prevEnd + 1
+    segments.push({ start: startLap, end: endLap, compound, driver })
+    prevEnd = endLap
+  })
+
+  if (segments.length) {
+    segments[segments.length - 1].end = raceLength
+  }
+
+  return segments
+}
+
+function buildStintSegmentsFromStints(stints: StrategyStint[], raceLength: number, driver: number): StintSegment[] {
+  if (!stints.length || raceLength <= 0) {
+    return []
+  }
+  const pitLaps: number[] = []
+  let prevLap = 0
+  for (let i = 1; i < stints.length; i += 1) {
+    const minVal = Number(stints[i].pitMin)
+    const maxVal = Number(stints[i].pitMax)
+    let pitLap = Math.round((raceLength * i) / stints.length)
+    if (Number.isFinite(minVal) && Number.isFinite(maxVal) && minVal <= maxVal) {
+      pitLap = Math.round((minVal + maxVal) / 2)
+    }
+    pitLap = clampNumber(pitLap, prevLap + 1, raceLength - 1)
+    pitLaps.push(pitLap)
+    prevLap = pitLap
+  }
+
+  let prevEnd = 0
+  const segments: StintSegment[] = []
+  stints.forEach((stint, idx) => {
+    let endLap = raceLength
+    if (idx < pitLaps.length) {
+      endLap = pitLaps[idx]
+    }
+    const startLap = prevEnd + 1
+    segments.push({
+      start: startLap,
+      end: endLap,
+      compound: stint.compound || '—',
+      driver
+    })
+    prevEnd = endLap
+  })
+  if (segments.length) {
+    segments[segments.length - 1].end = raceLength
+  }
+  return segments
+}
+
+function LapTimeComparisonChart({ series }: { series: LapTimeSeries | null | undefined }) {
+  if (!series || !series.laps.length) {
+    return <p className={cx('muted')}>No lap time series available for this run.</p>
+  }
+
+  const laps = series.laps
+  const data = laps.map((lap, idx) => ({
+    lap,
+    driverA: series.driver.A[idx] ?? null,
+    driverB: series.driver.B[idx] ?? null,
+    others: series.others[idx] ?? null
+  }))
+
+  const values = data
+    .flatMap((row) => [row.driverA, row.driverB, row.others])
+    .filter((value) => Number.isFinite(value)) as number[]
+  if (!values.length) {
+    return <p className={cx('muted')}>No lap time series available for this run.</p>
+  }
+
+  const minValue = Math.min(...values)
+  const maxValue = Math.max(...values)
+  const pad = (maxValue - minValue) * 0.08
+  const domainMin = Math.max(0, minValue - pad)
+  const domainMax = maxValue + pad
+
+  return (
+    <div style={{ width: '100%', height: 260 }}>
+      <ResponsiveContainer>
+        <LineChart data={data} margin={{ top: 10, right: 18, left: 4, bottom: 0 }}>
+          <CartesianGrid stroke="rgba(148, 163, 184, 0.25)" strokeDasharray="4 4" />
+          <XAxis dataKey="lap" tick={{ fill: '#6b7280', fontSize: 11 }} />
+          <YAxis
+            domain={[domainMin, domainMax]}
+            tick={{ fill: '#6b7280', fontSize: 11 }}
+            tickFormatter={(value) => `${value.toFixed(1)}s`}
+          />
+          <Tooltip
+            formatter={(value: number) => (Number.isFinite(value) ? `${value.toFixed(2)}s` : '—')}
+            labelFormatter={(label) => `Lap ${label}`}
+          />
+          <Line type="monotone" dataKey="others" stroke="#6b7280" strokeWidth={2} dot={false} isAnimationActive={false} name="Other drivers" />
+          <Line type="monotone" dataKey="driverA" stroke="#1d4ed8" strokeWidth={2.5} dot={false} isAnimationActive={false} name="Driver A" />
+          <Line type="monotone" dataKey="driverB" stroke="#f97316" strokeWidth={2.5} dot={false} isAnimationActive={false} name="Driver B" />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
+function PositionComparisonChart({ series }: { series: PositionSeries | null | undefined }) {
+  if (!series || !series.laps.length) {
+    return <p className={cx('muted')}>No position series available for this run.</p>
+  }
+
+  const data = series.laps.map((lap, idx) => ({
+    lap,
+    stratA: series.A[idx] ?? null,
+    stratB: series.B[idx] ?? null
+  }))
+
+  const values = data
+    .flatMap((row) => [row.stratA, row.stratB])
+    .filter((value) => Number.isFinite(value)) as number[]
+  if (!values.length) {
+    return <p className={cx('muted')}>No position series available for this run.</p>
+  }
+
+  const minValue = Math.min(...values)
+  const maxValue = Math.max(...values)
+
+  return (
+    <div style={{ width: '100%', height: 240 }}>
+      <ResponsiveContainer>
+        <LineChart data={data} margin={{ top: 10, right: 18, left: 4, bottom: 0 }}>
+          <CartesianGrid stroke="rgba(148, 163, 184, 0.25)" strokeDasharray="4 4" />
+          <XAxis dataKey="lap" tick={{ fill: '#6b7280', fontSize: 11 }} />
+          <YAxis
+            domain={[minValue, maxValue]}
+            reversed
+            tick={{ fill: '#6b7280', fontSize: 11 }}
+            tickFormatter={(value) => `P${Math.round(value)}`}
+          />
+          <Tooltip
+            formatter={(value: number) => (Number.isFinite(value) ? `P${value.toFixed(1)}` : '—')}
+            labelFormatter={(label) => `Lap ${label}`}
+          />
+          <Line type="monotone" dataKey="stratA" stroke="#1d4ed8" strokeWidth={2.5} dot={false} isAnimationActive={false} name="Strategy A" />
+          <Line type="monotone" dataKey="stratB" stroke="#f97316" strokeWidth={2.5} dot={false} isAnimationActive={false} name="Strategy B" />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
 function formatValue(value: unknown, column: string) {
   if (typeof value === 'number') {
     if (column.includes('wins') || column.includes('podiums') || column.includes('dnf') || column.includes('sc_laps')) {
@@ -353,6 +587,7 @@ function StrategySimulator() {
   const [grid, setGrid] = useState('VER, LEC, HAM, RUS, GAS, HUL')
   const [safetyCarLaps, setSafetyCarLaps] = useState('17, 18')
   const [rainLaps, setRainLaps] = useState('')
+  const [seedInput, setSeedInput] = useState('')
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [controlledDriver, setControlledDriver] = useState('')
   const [showSetup, setShowSetup] = useState(true)
@@ -360,6 +595,7 @@ function StrategySimulator() {
   const [strategyBErrors, setStrategyBErrors] = useState<Record<number, string>>({})
   const [liveStrategyA, setLiveStrategyA] = useState<StrategyStint[] | null>(null)
   const [liveStrategyB, setLiveStrategyB] = useState<StrategyStint[] | null>(null)
+  const [autoStrategies, setAutoStrategies] = useState<AutoStrategyPreview[]>([])
 
   const [running, setRunning] = useState(false)
   const [progress, setProgress] = useState(0)
@@ -500,6 +736,9 @@ function StrategySimulator() {
         setLiveStrategyB(stints)
       }
     } else if (event.event === 'auto_strategies') {
+      if (event.strategy === 'A') {
+        setAutoStrategies(event.strategies)
+      }
       const items = event.strategies
         .map((strat) => {
           const pits = strat.avg_pit_laps?.length ? `[${strat.avg_pit_laps.join(', ')}]` : '[]'
@@ -710,6 +949,7 @@ function StrategySimulator() {
     setCurrentRun(0)
     setLiveStrategyA(null)
     setLiveStrategyB(null)
+    setAutoStrategies([])
     setStrategyAErrors({})
     setStrategyBErrors({})
 
@@ -737,7 +977,8 @@ function StrategySimulator() {
 
     const payload: StrategyComparisonInput = {
       options: {
-        stream_progress: true
+        stream_progress: true,
+        ...(seedInput.trim() ? { seed: Number(seedInput) } : {})
       },
       strategy: {
         strategy_a_global: null,
@@ -800,6 +1041,7 @@ function StrategySimulator() {
     setCurrentRun(0)
     setLiveStrategyA(null)
     setLiveStrategyB(null)
+    setAutoStrategies([])
     setStrategyAErrors({})
     setStrategyBErrors({})
     setShowSetup(true)
@@ -809,6 +1051,50 @@ function StrategySimulator() {
   const summaryStrategyB = liveStrategyB ?? strategyBStints
   const liveStatsA = buildLiveStrategyStats(avgFinish, wins, podiums, currentRun, 'A')
   const liveStatsB = buildLiveStrategyStats(avgFinish, wins, podiums, currentRun, 'B')
+  const lapTimeSeries = result?.strategy_comparison.lap_time_series ?? null
+  const positionSeries = result?.strategy_comparison.position_series ?? null
+  const driverLabel = controlledDriver ? `${controlledDriver} - Strat` : 'Driver - Strat'
+  const strategyTimelineRows = useMemo(() => {
+    const rows: TimelineRow[] = []
+    const sessionDate = `${year}-01-01`
+    autoStrategies.slice(0, 3).forEach((strat, idx) => {
+      const sequence = parseStrategySequence(strat.sequence)
+      if (!sequence.length) {
+        return
+      }
+      const segments = buildStintSegmentsFromSequence(sequence, strat.avg_pit_laps ?? [], raceLength, idx + 1)
+      if (!segments.length) {
+        return
+      }
+      const probLabel = Number.isFinite(strat.probability) ? ` · ${strat.probability}%` : ''
+      rows.push({
+        driver: idx + 1,
+        stints: segments,
+        sessionDate,
+        label: `AI ${idx + 1}${probLabel}`
+      })
+    })
+    const userBase = rows.length + 1
+    const userSegmentsA = buildStintSegmentsFromStints(summaryStrategyA, raceLength, userBase)
+    if (userSegmentsA.length) {
+      rows.push({
+        driver: userBase,
+        stints: userSegmentsA,
+        sessionDate,
+        label: 'Strategy A'
+      })
+    }
+    const userSegmentsB = buildStintSegmentsFromStints(summaryStrategyB, raceLength, userBase + 1)
+    if (userSegmentsB.length) {
+      rows.push({
+        driver: userBase + 1,
+        stints: userSegmentsB,
+        sessionDate,
+        label: 'Strategy B'
+      })
+    }
+    return rows
+  }, [autoStrategies, summaryStrategyA, summaryStrategyB, raceLength, year])
 
   return (
     <div className={cx('app')}>
@@ -872,6 +1158,15 @@ function StrategySimulator() {
                 <div className={cx('field')}>
                   <label>Rain laps</label>
                   <input value={rainLaps} onChange={(event) => setRainLaps(event.target.value)} />
+                </div>
+                <div className={cx('field')}>
+                  <label>Seed (optional)</label>
+                  <input
+                    type="number"
+                    placeholder="random"
+                    value={seedInput}
+                    onChange={(event) => setSeedInput(event.target.value)}
+                  />
                 </div>
                 <div className={cx('field')}>
                   <label>Simulation runs</label>
@@ -989,9 +1284,14 @@ function StrategySimulator() {
           ) : (
             <>
               <section className={cx('panel')}>
-                <div className={cx('panel-title')}>
-                  <strong>Simulation summary</strong>
-                  <span className={cx('muted')}>Circuit, year, and strategy overview.</span>
+                <div className={cx('panel-header')}>
+                  <div className={cx('panel-title')}>
+                    <strong>Simulation summary</strong>
+                    <span className={cx('muted')}>Circuit, year, and strategy overview.</span>
+                  </div>
+                  <button className={cx('button')} onClick={resetSimulationView}>
+                    Create new simulation
+                  </button>
                 </div>
                 <div className={cx('summary-meta')}>
                   <span className={cx('pill')}>
@@ -1024,13 +1324,64 @@ function StrategySimulator() {
 
               <section className={cx('panel')}>
                 <div className={cx('panel-title')}>
+                  <strong>Lap time comparison</strong>
+                  <span className={cx('muted')}>Average lap time by lap for the controlled driver and the field.</span>
+                </div>
+                <div className={cx('compound-legend')}>
+                  <span className={cx('legend-item')}>
+                    <span className={cx('legend-swatch')} style={{ backgroundColor: '#1d4ed8' }} />
+                    {driverLabel} A
+                  </span>
+                  <span className={cx('legend-item')}>
+                    <span className={cx('legend-swatch')} style={{ backgroundColor: '#f97316' }} />
+                    {driverLabel} B
+                  </span>
+                  <span className={cx('legend-item')}>
+                    <span className={cx('legend-swatch')} style={{ backgroundColor: '#6b7280' }} />
+                    Other drivers (A+B)
+                  </span>
+                </div>
+                <LapTimeComparisonChart series={lapTimeSeries} />
+              </section>
+
+              <section className={cx('panel')}>
+                <div className={cx('panel-title')}>
+                  <strong>Position comparison</strong>
+                  <span className={cx('muted')}>Average position per lap for the controlled driver.</span>
+                </div>
+                <div className={cx('compound-legend')}>
+                  <span className={cx('legend-item')}>
+                    <span className={cx('legend-swatch')} style={{ backgroundColor: '#1d4ed8' }} />
+                    {driverLabel} A
+                  </span>
+                  <span className={cx('legend-item')}>
+                    <span className={cx('legend-swatch')} style={{ backgroundColor: '#f97316' }} />
+                    {driverLabel} B
+                  </span>
+                </div>
+                <PositionComparisonChart series={positionSeries} />
+              </section>
+
+              <section className={cx('panel')}>
+                <div className={cx('panel-title')}>
+                  <strong>Strategy timelines</strong>
+                  <span className={cx('muted')}>Top AI strategies and your A/B strategies.</span>
+                </div>
+                <div className={cx('compound-legend')}>
+                  {Object.entries(INSIGHTS_COMPOUND_COLORS).map(([compound, color]) => (
+                    <span key={compound} className={cx('legend-item')}>
+                      <span className={cx('legend-swatch')} style={{ backgroundColor: color }} />
+                      {compound}
+                    </span>
+                  ))}
+                </div>
+                <StintTimeline rows={strategyTimelineRows} maxLap={raceLength} />
+              </section>
+
+              <section className={cx('panel')}>
+                <div className={cx('panel-title')}>
                   <strong>Strategy comparison results</strong>
                   <span className={cx('muted')}>Summary table from the latest run.</span>
-                </div>
-                <div className={cx('row')}>
-                  <button className={cx('button')} onClick={resetSimulationView}>
-                    Create new simulation
-                  </button>
                 </div>
                 <div className={cx('table-wrapper')}>
                   <table className={cx('table')}>

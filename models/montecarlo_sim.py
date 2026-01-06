@@ -228,6 +228,8 @@ class MonteCarloSimulator:
 
         self.spline_cols = [f"lap_spline_{i}" for i in range(self.spline.n_features_out_)]
         self.weather_scaled_cols = [c + "_scaled" for c in self.weather_cols]
+        self.last_lap_time_series = None
+        self.last_position_series = None
 
         vocab_sizes = {
             "driver": len(self.cat_vocabs["driver_id"]) + 1,
@@ -1229,6 +1231,16 @@ class MonteCarloSimulator:
         elif a_keys or b_keys:
             focus_driver = sorted(a_keys | b_keys)[0]
 
+        driver_lap_by_lap_sum = None
+        driver_lap_by_lap_count = None
+        others_lap_sum = None
+        others_lap_count = None
+        if focus_driver is not None:
+            driver_lap_by_lap_sum = {"A": np.zeros(race_length), "B": np.zeros(race_length)}
+            driver_lap_by_lap_count = {"A": np.zeros(race_length), "B": np.zeros(race_length)}
+            others_lap_sum = np.zeros(race_length)
+            others_lap_count = np.zeros(race_length)
+
         custom_sum = {
             label: {drv: np.zeros(race_length) for drv in all_custom_drivers}
             for label in ["A", "B"]
@@ -1382,6 +1394,29 @@ class MonteCarloSimulator:
                 )
                 lap_sum[label] += lap_stats["sum"].to_numpy()
                 lap_count[label] += lap_stats["count"].to_numpy()
+
+                if focus_driver is not None and driver_lap_by_lap_sum is not None:
+                    driver_lap_stats = (
+                        race_log
+                        .loc[race_log["driver_id"] == focus_driver]
+                        .dropna(subset=["lap_time"])
+                        .groupby("lap")["lap_time"]
+                        .agg(["sum", "count"])
+                        .reindex(range(1, race_length + 1), fill_value=0.0)
+                    )
+                    driver_lap_by_lap_sum[label] += driver_lap_stats["sum"].to_numpy()
+                    driver_lap_by_lap_count[label] += driver_lap_stats["count"].to_numpy()
+
+                    other_lap_stats = (
+                        race_log
+                        .loc[race_log["driver_id"] != focus_driver]
+                        .dropna(subset=["lap_time"])
+                        .groupby("lap")["lap_time"]
+                        .agg(["sum", "count"])
+                        .reindex(range(1, race_length + 1), fill_value=0.0)
+                    )
+                    others_lap_sum += other_lap_stats["sum"].to_numpy()
+                    others_lap_count += other_lap_stats["count"].to_numpy()
 
                 driver_stats = (
                     race_log
@@ -1586,6 +1621,38 @@ class MonteCarloSimulator:
         avg_finish["pit_loss_A"] = pit_sum.get("A") / pit_count.get("A")
         avg_finish["pit_loss_B"] = pit_sum.get("B") / pit_count.get("B")
 
+        lap_time_series = None
+        position_series = None
+        if focus_driver is not None and driver_lap_by_lap_sum is not None:
+            def _avg_series(sum_arr, count_arr):
+                return [float(s / c) if c > 0 else None for s, c in zip(sum_arr, count_arr)]
+
+            lap_time_series = {
+                "driver_id": focus_driver,
+                "laps": list(range(1, race_length + 1)),
+                "driver": {
+                    "A": _avg_series(driver_lap_by_lap_sum["A"], driver_lap_by_lap_count["A"]),
+                    "B": _avg_series(driver_lap_by_lap_sum["B"], driver_lap_by_lap_count["B"]),
+                },
+                "others": _avg_series(others_lap_sum, others_lap_count),
+            }
+        if focus_driver is not None:
+            pos_sum_a = driver_pos_sum.get("A", {}).get(focus_driver)
+            pos_cnt_a = driver_pos_count.get("A", {}).get(focus_driver)
+            pos_sum_b = driver_pos_sum.get("B", {}).get(focus_driver)
+            pos_cnt_b = driver_pos_count.get("B", {}).get(focus_driver)
+            if pos_sum_a is not None and pos_cnt_a is not None and pos_sum_b is not None and pos_cnt_b is not None:
+                def _avg_pos(sum_arr, count_arr):
+                    return [float(s / c) if c > 0 else None for s, c in zip(sum_arr, count_arr)]
+                position_series = {
+                    "driver_id": focus_driver,
+                    "laps": list(range(1, race_length + 1)),
+                    "A": _avg_pos(pos_sum_a, pos_cnt_a),
+                    "B": _avg_pos(pos_sum_b, pos_cnt_b),
+                }
+        self.last_lap_time_series = lap_time_series
+        self.last_position_series = position_series
+
         if from_notebook:
             print("Wins per strategy:", wins)
             print("Average finish per driver (A vs B, lower is better): ", avg_finish.sort_values("delta_B_minus_A"))
@@ -1691,6 +1758,8 @@ def _run_strategy_cli(args):
         "strategy_comparison": {
             "summary_comp_df": _df_to_records(summary_comp_df),
             "avg_finish": _df_to_records(avg_finish_out),
+            "lap_time_series": sim.last_lap_time_series,
+            "position_series": sim.last_position_series,
         },
     }
 

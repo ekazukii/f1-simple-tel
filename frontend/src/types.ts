@@ -139,6 +139,21 @@ export interface StrategyComparisonOutput {
   strategy_comparison: {
     summary_comp_df: Array<Record<string, unknown>>;
     avg_finish: Array<Record<string, unknown>>;
+    lap_time_series?: {
+      driver_id: string | null;
+      laps: number[];
+      driver: {
+        A: Array<number | null>;
+        B: Array<number | null>;
+      };
+      others: Array<number | null>;
+    } | null;
+    position_series?: {
+      driver_id: string | null;
+      laps: number[];
+      A: Array<number | null>;
+      B: Array<number | null>;
+    } | null;
   };
 }
 
