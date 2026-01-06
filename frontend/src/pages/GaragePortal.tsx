@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { NavLink } from "react-router-dom";
+import GarageNavBar from "../components/GarageNavBar";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
@@ -389,33 +389,7 @@ function GaragePortal() {
       <div className={cx("garage-hero")}>
         <div className={cx("garage-hero__canvas")} ref={containerRef} />
       </div>
-      <nav className={cx("garage-nav")}>
-        <NavLink
-          to="/"
-          end
-          className={({ isActive }) =>
-            cx("garage-nav__link", isActive ? "garage-nav__link--active" : "")
-          }
-        >
-          Session Explorer
-        </NavLink>
-        <NavLink
-          to="/replayer"
-          className={({ isActive }) =>
-            cx("garage-nav__link", isActive ? "garage-nav__link--active" : "")
-          }
-        >
-          Race Replayer
-        </NavLink>
-        <NavLink
-          to="/garage"
-          className={({ isActive }) =>
-            cx("garage-nav__link", isActive ? "garage-nav__link--active" : "")
-          }
-        >
-          Garage Portal
-        </NavLink>
-      </nav>
+      <GarageNavBar />
       <div className={cx("garage-scroll-hint")}>
         <span className={cx("hint-arrow")}>↓</span>
         <span>Scroll to enter</span>
