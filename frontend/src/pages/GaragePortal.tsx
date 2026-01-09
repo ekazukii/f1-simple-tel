@@ -16,6 +16,7 @@ const cx = (...names: string[]) =>
 
 function GaragePortal() {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const scrollAreaRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let renderer: THREE.WebGLRenderer | null = null;
@@ -23,6 +24,7 @@ function GaragePortal() {
     let settleFrames = 0;
     let scrollP = 0;
     let maxScroll = 1;
+    let effectScroll = 1;
 
     // scenes and camera
     const scene3D = new THREE.Scene();
@@ -43,9 +45,14 @@ function GaragePortal() {
         1,
         document.documentElement.scrollHeight - window.innerHeight
       );
+      const scrollAreaHeight =
+        scrollAreaRef.current?.offsetHeight ?? window.innerHeight * 2.8;
+      effectScroll = Math.max(1, Math.min(maxScroll, scrollAreaHeight));
     };
-    const computeScrollProgress = () =>
-      clamp01(Math.min(window.scrollY, maxScroll) / maxScroll);
+    const computeScrollProgress = () => {
+      const clamped = Math.min(window.scrollY, effectScroll);
+      return clamp01(clamped / Math.max(1, effectScroll));
+    };
 
     // bg and mask materials
     const bgMat = new THREE.MeshBasicMaterial({
@@ -385,7 +392,8 @@ function GaragePortal() {
 
   return (
     <div className={cx("garage-page")}>
-      <div className={cx("garage-scrollArea")} />
+      <div className={cx("garage-scrollArea")} ref={scrollAreaRef} />
+
       <div className={cx("garage-hero")}>
         <div className={cx("garage-hero__canvas")} ref={containerRef} />
       </div>
@@ -394,37 +402,93 @@ function GaragePortal() {
         <span className={cx("hint-arrow")}>↓</span>
         <span>Scroll to enter</span>
       </div>
+      <div className={cx("garage-intro-spacer")} />
       <main className={cx("garage-main")}>
         <div className={cx("garage-card")}>
-          <h1>Garage Portal</h1>
-          <p className={cx("lead")}>
-            The page lives beneath the canvas — you glimpse it through the DRS
-            portal, then the canvas fades away near the end of the scroll.
-          </p>
-        </div>
-        <div className={cx("garage-card")}>
-          <h2>What you’re seeing</h2>
-          <p>
-            The 3D scene is loaded lazily from the GLTF model{" "}
-            <code>f1_garage2_compress.glb</code> (DRACO-compressed). Camera
-            position interpolates with scroll, and lights/PMREM give a clean
-            studio look.
-          </p>
-        </div>
-        <div className={cx("garage-card")}>
-          <h2>How to extend</h2>
-          <p>
-            Replace the GLB with any car/garage, or hook in live telemetry to
-            drive camera targets. The stencil portal keeps HTML visible only
-            through the flap until the fade finishes.
-          </p>
-        </div>
-        <div className={cx("garage-card")}>
-          <h2>Next steps</h2>
-          <p>
-            Use this portal to intro your dashboards: the HTML shows through the
-            flap until the canvas fully fades.
-          </p>
+          <div className={cx("garage-card__content")}>
+            <section className={cx("garage-section")}>
+              <h1>About this project</h1>
+              <p className={cx("lead")}>
+                This is a telemetry studio and race strategy laboratory built to
+                turn raw Formula 1 timing data into decisions. It connects live
+                session data, a replay engine, and a Monte Carlo simulator so
+                that strategy discussions are grounded in measurable outcomes.
+              </p>
+            </section>
+            <section className={cx("garage-section")}>
+              <h2>Data foundation</h2>
+              <ul>
+                <li>
+                  High-frequency car and location data is normalized into a
+                  time-series store, keeping telemetry queryable by session,
+                  driver, and timestamp.
+                </li>
+                <li>
+                  The model favors time-based sampling for interactivity, so the
+                  UI can stay fast without losing the shape of the lap.
+                </li>
+                <li>
+                  Session metadata, stints, pit stops, and weather are stored
+                  alongside telemetry to keep context intact.
+                </li>
+              </ul>
+            </section>
+            <section className={cx("garage-section")}>
+              <h2>Architecture choices</h2>
+              <ul>
+                <li>
+                  A thin backend API exposes read-optimized endpoints so the
+                  frontend stays lightweight and stateless.
+                </li>
+                <li>
+                  The simulation engine runs in Python to leverage numeric
+                  tooling, while the web layer stays in TypeScript for
+                  reliability and developer velocity.
+                </li>
+                <li>
+                  Simulation progress streams as JSON lines, enabling live
+                  updates without blocking the UI.
+                </li>
+              </ul>
+            </section>
+            <section className={cx("garage-section")}>
+              <h2>Product modules</h2>
+              <ul>
+                <li>
+                  <strong>Session Explorer</strong> turns telemetry, stints, and
+                  lap timing into a readable session snapshot.
+                </li>
+                <li>
+                  <strong>Race Replayer</strong> reconstructs car positions and
+                  race events into a time-accurate playback.
+                </li>
+                <li>
+                  <strong>Strategy Lab</strong> compares Strategy A vs B with
+                  consistent randomness and detailed per-lap metrics.
+                </li>
+              </ul>
+            </section>
+            <section className={cx("garage-section")}>
+              <h2>Simulation integrity</h2>
+              <ul>
+                <li>
+                  Strategies share the same random conditions per run so the
+                  comparison is fair.
+                </li>
+                <li>
+                  Pit loss uses a hard floor with a long tail to reflect
+                  real-world constraints.
+                </li>
+                <li>
+                  Safety car and rain scenarios are injected or sampled so the
+                  engine can model strategic risk.
+                </li>
+                <li>
+                  Seeds are explicit for reproducibility and auditability.
+                </li>
+              </ul>
+            </section>
+          </div>
         </div>
       </main>
     </div>

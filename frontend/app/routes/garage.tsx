@@ -1,10 +1,10 @@
 import GaragePortal from "../../src/pages/GaragePortal";
 
 export const meta = () => [
-  { title: "Garage Portal | F1 Telemetry" },
+  { title: "About | F1 Telemetry" },
   {
     name: "description",
-    content: "Analyze driver and team performance with telemetry overlays and comparisons."
+    content: "Learn about the F1 telemetry studio, race replay, and Monte Carlo strategy simulator."
   }
 ];
 
