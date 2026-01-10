@@ -8,6 +8,7 @@ const CANVAS_HEIGHT = Number(process.env.TRACK_SPEED_HEIGHT ?? 500);
 const CANVAS_PADDING = Number(process.env.TRACK_SPEED_PADDING ?? 24);
 const MAX_POINTS = Number(process.env.TRACK_SPEED_MAX_POINTS ?? 1000);
 const SAMPLE_SECONDS = Number(process.env.TRACK_SPEED_SAMPLE_SECONDS ?? 1);
+const SPEED_BINS = Number(process.env.TRACK_SPEED_BINS ?? 128);
 
 type TelemetryRow = {
   driver_number: number | string | null;
@@ -171,9 +172,18 @@ function getSpeedBounds(points: TrackPoint[]) {
   return { min: bounds.min, max: bounds.max };
 }
 
-function speedToColor(ratio: number) {
+function quantizeRatio(ratio: number) {
   const clamped = Math.min(1, Math.max(0, ratio));
-  const hue = (1 - clamped) * 240;
+  if (SPEED_BINS <= 1) {
+    return 0;
+  }
+  const steps = SPEED_BINS - 1;
+  return Math.round(clamped * steps) / steps;
+}
+
+function speedToColor(ratio: number) {
+  const quantized = quantizeRatio(ratio);
+  const hue = (1 - quantized) * 240;
   return `hsl(${hue}, 90%, 55%)`;
 }
 
@@ -211,10 +221,26 @@ function buildSvg(points: TrackPoint[], label: string) {
     ((value - bounds.minY) / (bounds.maxY - bounds.minY || 1)) *
       (CANVAS_HEIGHT - CANVAS_PADDING * 2);
 
-  const segments: Array<{ color: string; d: string }> = [];
+  const pathsByColor = new Map<string, string[]>();
+  const colorOrder: string[] = [];
   let lastPoint: { x: number; y: number } | null = null;
   let currentColor: string | null = null;
   let currentPath: string[] = [];
+
+  const flushPath = () => {
+    if (!currentColor || !currentPath.length) {
+      currentPath = [];
+      return;
+    }
+    let paths = pathsByColor.get(currentColor);
+    if (!paths) {
+      paths = [];
+      pathsByColor.set(currentColor, paths);
+      colorOrder.push(currentColor);
+    }
+    paths.push(currentPath.join(" "));
+    currentPath = [];
+  };
 
   points.forEach((point) => {
     const px = scaleX(point.x);
@@ -222,44 +248,41 @@ function buildSvg(points: TrackPoint[], label: string) {
     const color = getSpeedColor(point.speed, speedBounds);
 
     if (color !== currentColor) {
-      if (currentPath.length) {
-        segments.push({ color: currentColor ?? color, d: currentPath.join(" ") });
-      }
+      flushPath();
       currentColor = color;
-      currentPath = [];
       if (lastPoint) {
         currentPath.push(`M ${lastPoint.x.toFixed(2)} ${lastPoint.y.toFixed(2)}`);
         currentPath.push(`L ${px.toFixed(2)} ${py.toFixed(2)}`);
       } else {
         currentPath.push(`M ${px.toFixed(2)} ${py.toFixed(2)}`);
       }
+    } else if (!currentPath.length) {
+      currentPath.push(`M ${px.toFixed(2)} ${py.toFixed(2)}`);
     } else {
-      if (!currentPath.length) {
-        currentPath.push(`M ${px.toFixed(2)} ${py.toFixed(2)}`);
-      } else {
-        currentPath.push(`L ${px.toFixed(2)} ${py.toFixed(2)}`);
-      }
+      currentPath.push(`L ${px.toFixed(2)} ${py.toFixed(2)}`);
     }
 
     lastPoint = { x: px, y: py };
   });
 
-  if (currentPath.length) {
-    segments.push({ color: currentColor ?? "#0f172a", d: currentPath.join(" ") });
-  }
+  flushPath();
 
   const header = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}" preserveAspectRatio="xMidYMid meet">`;
   const title = `<title>${label}</title>`;
   const background = `<rect width="100%" height="100%" fill="#f8fafc" />`;
-  const paths = segments
-    .map(
-      (segment) =>
-        `<path d="${segment.d}" fill="none" stroke="${segment.color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />`
-    )
+  const paths = colorOrder
+    .map((color) => {
+      const d = pathsByColor.get(color)?.join(" ");
+      if (!d) {
+        return "";
+      }
+      return `<path d="${d}" stroke="${color}" />`;
+    })
     .join("");
+  const group = `<g fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${paths}</g>`;
   const footer = `</svg>`;
 
-  return [header, title, background, paths, footer].join("");
+  return [header, title, background, group, footer].join("");
 }
 
 async function writeSvgFile(
