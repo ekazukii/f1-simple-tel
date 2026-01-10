@@ -14,7 +14,7 @@ import { getDriverByNumberOnDate } from "../utils/drivers";
 import { fetchTrackLayout } from "../api/trackLayout";
 
 const SPEED_PRESETS = [0.1, 0.25, 0.5, 1, 2, 4, 10];
-const PREVIEW_SAMPLE_SECONDS = 8;
+const PREVIEW_SAMPLE_SECONDS = 5;
 const CRASH_RENDER_MODE: "park" | "hide" = "park";
 const STOP_WINDOW_MS = 20_000;
 const STOP_DISTANCE = 15;
