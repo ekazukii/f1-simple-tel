@@ -14,6 +14,7 @@ import { getDriverByNumberOnDate } from "../utils/drivers";
 import { fetchTrackLayout } from "../api/trackLayout";
 
 const SPEED_PRESETS = [0.1, 0.25, 0.5, 1, 2, 4, 10];
+const PREVIEW_SAMPLE_SECONDS = 8;
 const CRASH_RENDER_MODE: "park" | "hide" = "park";
 const STOP_WINDOW_MS = 20_000;
 const STOP_DISTANCE = 15;
@@ -31,7 +32,12 @@ const cx = (...names: string[]) =>
 
 type StatusState = { loading: boolean; error: string | null };
 
-type DriverSample = { x: number; y: number; time: number; speed?: number | null };
+type DriverSample = {
+  x: number;
+  y: number;
+  time: number;
+  speed?: number | null;
+};
 
 type DriverTimeline = {
   driver: number;
@@ -65,11 +71,19 @@ export function RaceReplayer() {
   const [speed, setSpeed] = useState<number>(4);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState<number>(0);
-  const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(
-    null
-  );
+  const [downloadProgress, setDownloadProgress] =
+    useState<DownloadProgress | null>(null);
   const [trackLayout, setTrackLayout] = useState<TrackLayout | null>(null);
   const rafRef = useRef<number | null>(null);
+  const playbackSessionRef = useRef<string | null>(null);
+  const playbackInitializedRef = useRef(false);
+
+  useEffect(() => {
+    if (playbackSessionRef.current !== selectedSession) {
+      playbackSessionRef.current = selectedSession;
+      playbackInitializedRef.current = false;
+    }
+  }, [selectedSession]);
 
   useEffect(() => {
     if (!selectedSession) {
@@ -77,13 +91,51 @@ export function RaceReplayer() {
     }
 
     let cancelled = false;
-    const abortController = new AbortController();
+    const previewController = new AbortController();
+    const fullController = new AbortController();
     setStatus({ loading: true, error: null });
     setSession(null);
     setDownloadProgress({ progress: 0, receivedBytes: 0, totalBytes: null });
 
+    const startFullFetch = () => {
+      fetchSession(selectedSession, {
+        telemetryMode: "position",
+        signal: fullController.signal,
+        onProgress: (update) => {
+          if (!cancelled) {
+            setDownloadProgress(update);
+          }
+        },
+      })
+        .then((data) => {
+          if (cancelled || fullController.signal.aborted) return;
+          setSession(data);
+          setStatus({ loading: false, error: null });
+        })
+        .catch((error) => {
+          if (cancelled || fullController.signal.aborted) {
+            return;
+          }
+          const message =
+            error instanceof Error
+              ? error.message
+              : "Failed to load full telemetry";
+          setStatus({
+            loading: false,
+            error: `Showing preview data. ${message}`,
+          });
+        })
+        .finally(() => {
+          if (!cancelled && !fullController.signal.aborted) {
+            setDownloadProgress(null);
+          }
+        });
+    };
+
     fetchSession(selectedSession, {
-      signal: abortController.signal,
+      sampleSeconds: PREVIEW_SAMPLE_SECONDS,
+      telemetryMode: "position",
+      signal: previewController.signal,
       onProgress: (update) => {
         if (!cancelled) {
           setDownloadProgress(update);
@@ -91,27 +143,30 @@ export function RaceReplayer() {
       },
     })
       .then((data) => {
-        if (cancelled) return;
+        if (cancelled || previewController.signal.aborted) return;
         setSession(data);
-        setStatus({ loading: false, error: null });
+        setStatus({ loading: true, error: null });
+        setDownloadProgress({
+          progress: 0,
+          receivedBytes: 0,
+          totalBytes: null,
+        });
+        startFullFetch();
       })
       .catch((error) => {
-        if (cancelled || abortController.signal.aborted) {
+        if (cancelled || previewController.signal.aborted) {
           return;
         }
         const message =
           error instanceof Error ? error.message : "Failed to load session";
         setStatus({ loading: false, error: message });
-      })
-      .finally(() => {
-        if (!cancelled && !abortController.signal.aborted) {
-          setDownloadProgress(null);
-        }
+        setDownloadProgress(null);
       });
 
     return () => {
       cancelled = true;
-      abortController.abort();
+      previewController.abort();
+      fullController.abort();
     };
   }, [selectedSession]);
 
@@ -233,9 +288,20 @@ export function RaceReplayer() {
       setIsPlaying(false);
       return;
     }
-    const targetTime = lastGreenEventTime ?? playbackRange.start;
-    setCurrentTime(targetTime);
-    setIsPlaying(false);
+    if (!playbackInitializedRef.current) {
+      const targetTime = lastGreenEventTime ?? playbackRange.start;
+      setCurrentTime(targetTime);
+      setIsPlaying(false);
+      playbackInitializedRef.current = true;
+      return;
+    }
+    setCurrentTime((prev) => {
+      const clamped = Math.min(
+        Math.max(prev, playbackRange.start),
+        playbackRange.end
+      );
+      return clamped === prev ? prev : clamped;
+    });
   }, [playbackRange, lastGreenEventTime]);
 
   useEffect(() => {
@@ -341,7 +407,10 @@ export function RaceReplayer() {
         <div>
           <p className={cx("eyebrow")}>Race Replayer</p>
           <h1>Live telemetry playback</h1>
-          <p className={cx("lead")}>Scrub through position traces, replay race control, and compare timing moments.</p>
+          <p className={cx("lead")}>
+            Scrub through position traces, replay race control, and compare
+            timing moments.
+          </p>
         </div>
         <div className={cx("control-stack")}>
           <div className={cx("session-picker")}>
@@ -361,10 +430,16 @@ export function RaceReplayer() {
         </div>
       </header>
 
-      {status.error && <div className={cx("status", "error")}>{status.error}</div>}
+      {status.error && (
+        <div className={cx("status", "error")}>{status.error}</div>
+      )}
       {session && displayBounds ? (
         <section className={cx("race-replay-panel")}>
-          <RaceReplayCanvas points={replayPoints} bounds={displayBounds} layout={trackLayout ?? undefined} />
+          <RaceReplayCanvas
+            points={replayPoints}
+            bounds={displayBounds}
+            layout={trackLayout ?? undefined}
+          />
           <div className={cx("race-replay-controls")}>
             <div className={cx("playback-controls")}>
               <div className={cx("playback-time")}>
@@ -393,7 +468,9 @@ export function RaceReplayer() {
         </section>
       ) : status.loading ? (
         <section className={cx("race-replay-panel")}>
-          <div className={cx("race-replay-canvas", "race-replay-canvas--loading")}>
+          <div
+            className={cx("race-replay-canvas", "race-replay-canvas--loading")}
+          >
             <div
               className={`${cx("race-replay-progress")}${
                 downloadProgress?.progress == null ? " is-indeterminate" : ""
@@ -406,7 +483,9 @@ export function RaceReplayer() {
                 }`}
                 style={
                   downloadProgress?.progress != null
-                    ? { width: `${Math.max(downloadProgress.progress * 100, 1)}%` }
+                    ? {
+                        width: `${Math.max(downloadProgress.progress * 100, 1)}%`,
+                      }
                     : undefined
                 }
               />
@@ -415,8 +494,8 @@ export function RaceReplayer() {
               {downloadProgress?.totalBytes
                 ? `Downloading ${formatBytes(downloadProgress.receivedBytes)} / ${formatBytes(downloadProgress.totalBytes)}`
                 : downloadProgress
-                ? `Downloaded ${formatBytes(downloadProgress.receivedBytes)}`
-                : "Preparing download…"}
+                  ? `Downloaded ${formatBytes(downloadProgress.receivedBytes)}`
+                  : "Preparing download…"}
             </p>
           </div>
         </section>
@@ -528,7 +607,7 @@ function parseViewBox(svgText: string): Bounds | null {
     minX,
     minY,
     maxX: minX + width,
-    maxY: minY + height
+    maxY: minY + height,
   };
 }
 
@@ -596,7 +675,10 @@ function computeCrashStartTime(
   for (let i = 1; i < samples.length; i += 1) {
     distCum[i] =
       distCum[i - 1] +
-      Math.hypot(samples[i].x - samples[i - 1].x, samples[i].y - samples[i - 1].y);
+      Math.hypot(
+        samples[i].x - samples[i - 1].x,
+        samples[i].y - samples[i - 1].y
+      );
   }
 
   const shortDeque: number[] = [];
@@ -612,7 +694,10 @@ function computeCrashStartTime(
     if (speed == null) {
       return;
     }
-    while (deque.length && (speeds[deque[deque.length - 1]] ?? -Infinity) <= speed) {
+    while (
+      deque.length &&
+      (speeds[deque[deque.length - 1]] ?? -Infinity) <= speed
+    ) {
       deque.pop();
     }
     deque.push(idx);
@@ -659,7 +744,7 @@ function computeCrashStartTime(
 
     const shortDist = distCum[i] - distCum[shortStart];
     const shortHasSpeed = shortDeque.length > 0;
-    const shortMaxSpeed = shortHasSpeed ? speeds[shortDeque[0]] ?? 0 : null;
+    const shortMaxSpeed = shortHasSpeed ? (speeds[shortDeque[0]] ?? 0) : null;
     const shortStill = shortHasSpeed
       ? (shortMaxSpeed ?? 0) < SPEED_LOW_KMH
       : shortDist < STOP_DISTANCE;
@@ -684,7 +769,7 @@ function computeCrashStartTime(
 
     const longDist = distCum[i] - distCum[longStart];
     const longHasSpeed = longDeque.length > 0;
-    const longMaxSpeed = longHasSpeed ? speeds[longDeque[0]] ?? 0 : null;
+    const longMaxSpeed = longHasSpeed ? (speeds[longDeque[0]] ?? 0) : null;
     const longStill = longHasSpeed
       ? (longMaxSpeed ?? 0) < SPEED_RECOVER_KMH
       : longDist < CRASH_LONG_DISTANCE;

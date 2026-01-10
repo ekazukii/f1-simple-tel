@@ -5,6 +5,7 @@ const BACKEND_BASE_URL = (import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:
 interface FetchSessionOptions {
   sampleSeconds?: number | null
   includeTelemetry?: boolean
+  telemetryMode?: 'full' | 'none' | 'position'
   signal?: AbortSignal
   onProgress?: (update: {
     progress: number | null
@@ -17,13 +18,14 @@ export async function fetchSession(
   sessionKey: string,
   options: FetchSessionOptions = {}
 ): Promise<OpenF1SessionData> {
-  const { sampleSeconds, includeTelemetry = true, onProgress, signal } = options
+  const { sampleSeconds, includeTelemetry = true, telemetryMode, onProgress, signal } = options
   const params = new URLSearchParams()
   if (sampleSeconds && sampleSeconds > 0) {
     params.set('sample', String(sampleSeconds))
   }
-  if (!includeTelemetry) {
-    params.set('telemetry', 'none')
+  const resolvedTelemetryMode = telemetryMode ?? (includeTelemetry ? 'full' : 'none')
+  if (resolvedTelemetryMode !== 'full') {
+    params.set('telemetry', resolvedTelemetryMode)
   }
   const url = `${BACKEND_BASE_URL}/session/${encodeURIComponent(sessionKey)}${params.size ? `?${params.toString()}` : ''}`
   const response = await fetch(url, { signal })

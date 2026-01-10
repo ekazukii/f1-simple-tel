@@ -52,6 +52,13 @@ interface TelemetrySample {
   longitude: number | null;
 }
 
+interface TelemetryPositionSample {
+  driver_number: number;
+  sample_time: string;
+  x: number | null;
+  y: number | null;
+}
+
 interface TelemetrySliceSample {
   driver_number: number;
   sample_time: string;
@@ -62,6 +69,8 @@ interface TelemetrySliceSample {
   n_gear: number | null;
   throttle: number | null;
 }
+
+type SessionTelemetrySample = TelemetrySample | TelemetryPositionSample;
 
 interface PitStopRow {
   driver_number: number;
@@ -112,7 +121,7 @@ interface SessionResponse {
   dataState: SessionDataState;
   lastRefreshed: string | null;
   sessionInfo: SessionMeta;
-  telemetry: TelemetrySample[];
+  telemetry: SessionTelemetrySample[];
   pitStops: PitStopRow[];
   raceControl: RaceControlRow[];
   stints: StintRow[];
@@ -184,11 +193,15 @@ router.get("/session/:key", async (ctx) => {
   const parsedSample = Number(sampleSecondsRaw);
   const sampleSeconds =
     Number.isFinite(parsedSample) && parsedSample > 0 ? parsedSample : null;
-  const includeTelemetryRaw =
-    ctx.query.telemetry ?? ctx.query.includeTelemetry ?? "true";
-  const includeTelemetry = !["0", "false", "none", "no"].includes(
-    String(includeTelemetryRaw).toLowerCase()
-  );
+  const telemetryRaw = String(
+    ctx.query.telemetry ?? ctx.query.includeTelemetry ?? "full"
+  ).toLowerCase();
+  const telemetryMode: "full" | "none" | "position" =
+    ["0", "false", "none", "no"].includes(telemetryRaw)
+      ? "none"
+      : telemetryRaw === "position" || telemetryRaw === "pos"
+      ? "position"
+      : "full";
 
   if (!sessionKey) {
     ctx.status = 400;
@@ -201,7 +214,7 @@ router.get("/session/:key", async (ctx) => {
     const data = await getSessionData(
       sessionKey,
       sampleSeconds,
-      includeTelemetry
+      telemetryMode
     );
     ctx.body = data;
     console.log(`[DB] Finish querying session ${sessionKey}`);
@@ -638,7 +651,7 @@ export default app;
 async function getSessionData(
   requestKey: string,
   sampleSeconds: number | null,
-  includeTelemetry: boolean
+  telemetryMode: "full" | "none" | "position"
 ): Promise<SessionResponse> {
   const resolved = await resolveSessionKey(requestKey);
   if (!resolved) {
@@ -648,7 +661,7 @@ async function getSessionData(
     resolved.numericKey,
     resolved.alias ?? requestKey,
     sampleSeconds,
-    includeTelemetry
+    telemetryMode
   );
 }
 
@@ -713,7 +726,7 @@ async function loadSessionFromDatabase(
   sessionKey: number,
   requestKey: string,
   sampleSeconds: number | null,
-  includeTelemetry: boolean
+  telemetryMode: "full" | "none" | "position"
 ): Promise<SessionResponse> {
   let infoRows: Array<Record<string, unknown>> = [];
   try {
@@ -761,9 +774,12 @@ async function loadSessionFromDatabase(
   const sessionInfo = mapSessionInfo(infoRows[0]);
   const dataState = mapSessionDataState(infoRows[0].data_status);
   const lastRefreshed = toIsoNullable(infoRows[0].last_refreshed);
-  const telemetry = includeTelemetry
-    ? await fetchTelemetry(sessionKey, sampleSeconds)
-    : [];
+  const telemetry =
+    telemetryMode === "full"
+      ? await fetchTelemetry(sessionKey, sampleSeconds)
+      : telemetryMode === "position"
+      ? await fetchTelemetryPosition(sessionKey, sampleSeconds)
+      : [];
   const pitStops = await fetchPitStops(sessionKey);
   const raceControl = await fetchRaceControl(sessionKey);
   const stints = await fetchStints(sessionKey);
@@ -868,6 +884,53 @@ async function fetchTelemetry(
     z: toNullableNumber(row.z),
     latitude: toNullableNumber(row.latitude),
     longitude: toNullableNumber(row.longitude),
+  }));
+}
+
+async function fetchTelemetryPosition(
+  sessionKey: number,
+  sampleSeconds: number | null
+): Promise<TelemetryPositionSample[]> {
+  const rows = sampleSeconds
+    ? ((await db`
+        SELECT
+          driver_number,
+          sample_time,
+          x,
+          y
+        FROM (
+          SELECT
+            driver_number,
+            sample_time,
+            x,
+            y,
+            ROW_NUMBER() OVER (
+              PARTITION BY driver_number,
+                time_bucket(${sampleSeconds} * INTERVAL '1 second', sample_time)
+              ORDER BY sample_time DESC
+            ) AS row_rank
+          FROM telemetry_samples
+          WHERE session_key = ${sessionKey}
+        ) AS ranked
+        WHERE row_rank = 1
+        ORDER BY driver_number, sample_time
+      `) as Array<Record<string, unknown>>)
+    : ((await db`
+        SELECT
+          driver_number,
+          sample_time,
+          x,
+          y
+        FROM telemetry_samples
+        WHERE session_key = ${sessionKey}
+        ORDER BY driver_number, sample_time
+      `) as Array<Record<string, unknown>>);
+
+  return rows.map((row) => ({
+    driver_number: toNumber(row.driver_number) ?? 0,
+    sample_time: toIso(row.sample_time),
+    x: toNullableNumber(row.x),
+    y: toNullableNumber(row.y),
   }));
 }
 
