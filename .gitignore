@@ -24,3 +24,6 @@ backend/session-cache/latest.json
 models/.fastf1_cache/
 temp/
 __pycache__/
+
+
+track_speed_maps/

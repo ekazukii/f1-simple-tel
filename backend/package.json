@@ -12,7 +12,8 @@
     "sync-sessions": "bun src/scripts/sync-sessions.ts",
     "sync-radio": "bun src/scripts/sync-radio.ts",
     "sync-weather": "bun src/scripts/sync-weather.ts",
-    "build-track-heatmaps": "bun src/scripts/build-track-heatmaps.ts"
+    "build-track-heatmaps": "bun src/scripts/build-track-heatmaps.ts",
+    "build-track-speed-maps": "bun src/scripts/build-track-speed-maps.ts"
   },
   "keywords": [],
   "author": "",

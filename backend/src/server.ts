@@ -249,6 +249,91 @@ router.get("/track-layout/:circuitKey", async (ctx) => {
   }
 });
 
+router.get("/track-speed/:sessionKey/:driver/:lap", async (ctx) => {
+  const rawSession = ctx.params.sessionKey?.trim();
+  const rawDriver = ctx.params.driver?.trim();
+  const rawLap = ctx.params.lap?.trim();
+
+  if (!rawSession || !rawDriver || !rawLap) {
+    ctx.status = 400;
+    ctx.body = { error: "Session, driver, and lap are required" };
+    return;
+  }
+
+  const resolved = await resolveSessionKey(rawSession);
+  if (!resolved) {
+    ctx.status = 404;
+    ctx.body = { error: "Session not found" };
+    return;
+  }
+
+  const driverNumber = Number(rawDriver);
+  const lapNumber = Number(rawLap);
+  if (!Number.isFinite(driverNumber) || !Number.isFinite(lapNumber)) {
+    ctx.status = 400;
+    ctx.body = { error: "Driver and lap must be numeric identifiers" };
+    return;
+  }
+
+  const fileExists = async (candidate: string) => {
+    try {
+      await fs.access(candidate);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const sessionKey = resolved.numericKey;
+  const cwd = process.cwd();
+  const driverDir = `driver_${driverNumber}`;
+  const candidateDirs = [
+    path.join(cwd, "assets", "track_speed_maps", String(sessionKey), driverDir),
+    path.join(
+      cwd,
+      "backend",
+      "assets",
+      "track_speed_maps",
+      String(sessionKey),
+      driverDir
+    ),
+    path.join(
+      path.resolve(cwd, ".."),
+      "backend",
+      "assets",
+      "track_speed_maps",
+      String(sessionKey),
+      driverDir
+    ),
+  ];
+  const fileName = `lap_${lapNumber}.svg`;
+  let filePath: string | null = null;
+
+  for (const dir of candidateDirs) {
+    const candidate = path.join(dir, fileName);
+    if (await fileExists(candidate)) {
+      filePath = candidate;
+      break;
+    }
+  }
+
+  if (!filePath) {
+    ctx.status = 404;
+    ctx.body = { error: "Track speed map not found" };
+    return;
+  }
+
+  try {
+    const svg = await fs.readFile(filePath, "utf-8");
+    ctx.type = "image/svg+xml";
+    ctx.body = svg;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    ctx.status = 500;
+    ctx.body = { error: "Failed to read track speed map", detail: message };
+  }
+});
+
 router.post("/simulation/strategy", async (ctx) => {
   let body: unknown;
   try {

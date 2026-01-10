@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Select, { type SingleValue, type StylesConfig } from 'react-select';
 import sharedStyles from '../styles/Shared.module.css';
 import styles from '../styles/SessionExplorer.module.css';
-import { TelemetryCanvas } from '../components/TelemetryCanvas';
+import { TrackSpeedMap } from '../components/TrackSpeedMap';
 import { SessionInsights } from '../components/SessionInsights';
 import { DriverCompare } from '../components/DriverCompare';
 import type { OpenF1SessionData } from '../types';
@@ -442,7 +442,12 @@ function SessionPanel({
             <small>Shows only the selected lap’s telemetry when available.</small>
           </div>
         </div>
-        <TelemetryCanvas points={displayedTelemetry} />
+        <TrackSpeedMap
+          sessionKey={sessionKey}
+          driverNumber={activeDriver}
+          lapNumber={effectiveLapNumber}
+          fallbackPoints={displayedTelemetry}
+        />
       </div>
       <DriverCompare session={data} selectedLap={effectiveLapNumber} preferredDriver={preferredDriver} />
     </section>
