@@ -34,6 +34,17 @@ export interface TelemetrySample extends Record<string, unknown> {
   longitude: number | null;
 }
 
+export interface TelemetrySliceSample extends Record<string, unknown> {
+  driver_number: number;
+  sample_time: string;
+  lap_number: number | null;
+  speed: number | null;
+  brake: number | null;
+  rpm: number | null;
+  n_gear: number | null;
+  throttle: number | null;
+}
+
 export interface PitStopRecord extends Record<string, unknown> {
   driver_number: number;
   lap_number: number;

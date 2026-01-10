@@ -26,7 +26,11 @@ export function deriveLapOptions(
     }
 
     const priorities = buildDriverPriorityList(preferredDriver, driverMin, driverMax);
-    const activeDriver = findDriverWithTelemetry(session.telemetry ?? [], priorities);
+    const activeDriver = findDriverWithLapData(
+      session.laps ?? [],
+      session.stints ?? [],
+      priorities
+    );
     const lapDetails = buildLapDetails(
       session.laps ?? [],
       activeDriver,
@@ -103,12 +107,40 @@ export function findDriverWithTelemetry(telemetry: TelemetrySample[], priorities
   return priorities[0] ?? null;
 }
 
-export function filterTelemetryByDriver(telemetry: TelemetrySample[], driver: number | null) {
+export function findDriverWithLapData(
+  laps: Record<string, unknown>[],
+  stints: Record<string, unknown>[],
+  priorities: number[]
+) {
+  const driversWithData = new Set<number>();
+
+  [...laps, ...stints].forEach((record) => {
+    const driver = normalizeDriverNumber(record.driver_number);
+    if (driver != null) {
+      driversWithData.add(driver);
+    }
+  });
+
+  for (const driver of priorities) {
+    if (driversWithData.has(driver)) {
+      return driver;
+    }
+  }
+
+  return priorities[0] ?? null;
+}
+
+export function filterTelemetryByDriver<T extends Record<string, unknown>>(
+  telemetry: T[],
+  driver: number | null
+) {
   if (!driver) {
     return [];
   }
 
-  return telemetry.filter((record) => normalizeDriverNumber(record.driver_number) === driver);
+  return telemetry.filter(
+    (record) => normalizeDriverNumber(record.driver_number) === driver
+  );
 }
 
 export function buildLapDetails(

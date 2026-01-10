@@ -1,7 +1,8 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import sharedStyles from '../styles/Shared.module.css';
 import styles from '../styles/DriverCompare.module.css';
-import type { OpenF1SessionData } from '../types';
+import type { OpenF1SessionData, TelemetrySliceSample } from '../types';
+import { fetchTelemetrySlice } from '../api/telemetry';
 import {
   buildLapDetails,
   filterTelemetryByDriver,
@@ -73,19 +74,71 @@ export function DriverCompare({ session, selectedLap, preferredDriver }: Props) 
   const defaultB = Array.from(drivers).find((d) => d !== defaultA) ?? defaultA;
   const [driverA, setDriverA] = useState<number | null>(defaultA ?? null);
   const [driverB, setDriverB] = useState<number | null>(defaultB ?? null);
+  const [telemetry, setTelemetry] = useState<TelemetrySliceSample[]>([]);
+  const [telemetryStatus, setTelemetryStatus] = useState<{ loading: boolean; error: string | null }>({
+    loading: false,
+    error: null
+  });
   const sessionDate = session.sessionInfo?.date_start ?? session.sessionInfo?.date_end ?? new Date().toISOString();
 
   const lapRangeA = useMemo(() => pickLapRange(session, driverA, selectedLap), [session, driverA, selectedLap]);
   const lapRangeB = useMemo(() => pickLapRange(session, driverB, selectedLap), [session, driverB, selectedLap]);
   const lapNumber = selectedLap ?? lapRangeA?.lap ?? lapRangeB?.lap ?? null;
 
+  useEffect(() => {
+    if (!lapNumber) {
+      setTelemetry([]);
+      setTelemetryStatus({ loading: false, error: null });
+      return;
+    }
+
+    const driverSet = new Set<number>();
+    if (driverA != null) driverSet.add(driverA);
+    if (driverB != null) driverSet.add(driverB);
+    const driversList = Array.from(driverSet);
+
+    if (!driversList.length) {
+      setTelemetry([]);
+      setTelemetryStatus({ loading: false, error: null });
+      return;
+    }
+
+    const controller = new AbortController();
+    setTelemetryStatus({ loading: true, error: null });
+
+    fetchTelemetrySlice(session.sessionKey, {
+      drivers: driversList,
+      lap: lapNumber,
+      signal: controller.signal
+    })
+      .then((payload) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+        setTelemetry(payload.telemetry);
+        setTelemetryStatus({ loading: false, error: null });
+      })
+      .catch((error) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+        const message = error instanceof Error ? error.message : 'Failed to load telemetry';
+        setTelemetry([]);
+        setTelemetryStatus({ loading: false, error: message });
+      });
+
+    return () => {
+      controller.abort();
+    };
+  }, [session.sessionKey, driverA, driverB, lapNumber]);
+
   const seriesA = useMemo(
-    () => buildSeries(session, driverA, lapRangeA, SERIES_POINTS),
-    [session, driverA, lapRangeA]
+    () => buildSeries(telemetry, driverA, lapRangeA, SERIES_POINTS),
+    [telemetry, driverA, lapRangeA]
   );
   const seriesB = useMemo(
-    () => buildSeries(session, driverB, lapRangeB, SERIES_POINTS),
-    [session, driverB, lapRangeB]
+    () => buildSeries(telemetry, driverB, lapRangeB, SERIES_POINTS),
+    [telemetry, driverB, lapRangeB]
   );
 
   const mergedSeries = useMemo(() => mergeSeries(seriesA, seriesB), [seriesA, seriesB]);
@@ -145,7 +198,11 @@ export function DriverCompare({ session, selectedLap, preferredDriver }: Props) 
         </div>
       </div>
 
-      {!mergedSeries.length ? (
+      {telemetryStatus.loading ? (
+        <p className={cx('muted')}>Loading telemetry slice…</p>
+      ) : telemetryStatus.error ? (
+        <p className={cx('muted')}>{telemetryStatus.error}</p>
+      ) : !mergedSeries.length ? (
         <p className={cx('muted')}>No overlapping telemetry found for the selected lap.</p>
       ) : (
         <>
@@ -160,13 +217,13 @@ export function DriverCompare({ session, selectedLap, preferredDriver }: Props) 
 
 function deriveDrivers(session: OpenF1SessionData) {
   const drivers = new Set<number>();
-  (session.telemetry ?? []).forEach((record) => {
+  (session.laps ?? []).forEach((record) => {
     const driver = normalizeDriverNumber(record.driver_number);
     if (driver != null) {
       drivers.add(driver);
     }
   });
-  (session.laps ?? []).forEach((record) => {
+  (session.stints ?? []).forEach((record) => {
     const driver = normalizeDriverNumber(record.driver_number);
     if (driver != null) {
       drivers.add(driver);
@@ -190,7 +247,7 @@ function pickLapRange(session: OpenF1SessionData, driver: number | null, selecte
 }
 
 function buildSeries(
-  session: OpenF1SessionData,
+  telemetry: TelemetrySliceSample[],
   driver: number | null,
   lapRange: (LapDetail & { lap: number }) | null,
   targetPoints: number
@@ -199,8 +256,8 @@ function buildSeries(
     return [];
   }
 
-  const telemetry = filterTelemetryByDriver(session.telemetry ?? [], driver);
-  const lapSamples = selectRecordsForView(telemetry, lapRange, 6000);
+  const driverSamples = filterTelemetryByDriver(telemetry, driver);
+  const lapSamples = selectRecordsForView(driverSamples, lapRange, 6000);
   if (!lapSamples.length) {
     return [];
   }

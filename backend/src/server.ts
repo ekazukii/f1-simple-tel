@@ -52,6 +52,17 @@ interface TelemetrySample {
   longitude: number | null;
 }
 
+interface TelemetrySliceSample {
+  driver_number: number;
+  sample_time: string;
+  lap_number: number | null;
+  speed: number | null;
+  brake: number | null;
+  rpm: number | null;
+  n_gear: number | null;
+  throttle: number | null;
+}
+
 interface PitStopRow {
   driver_number: number;
   lap_number: number;
@@ -173,6 +184,11 @@ router.get("/session/:key", async (ctx) => {
   const parsedSample = Number(sampleSecondsRaw);
   const sampleSeconds =
     Number.isFinite(parsedSample) && parsedSample > 0 ? parsedSample : null;
+  const includeTelemetryRaw =
+    ctx.query.telemetry ?? ctx.query.includeTelemetry ?? "true";
+  const includeTelemetry = !["0", "false", "none", "no"].includes(
+    String(includeTelemetryRaw).toLowerCase()
+  );
 
   if (!sessionKey) {
     ctx.status = 400;
@@ -182,7 +198,11 @@ router.get("/session/:key", async (ctx) => {
 
   try {
     console.log(`[DB] Querying session ${sessionKey}`);
-    const data = await getSessionData(sessionKey, sampleSeconds);
+    const data = await getSessionData(
+      sessionKey,
+      sampleSeconds,
+      includeTelemetry
+    );
     ctx.body = data;
     console.log(`[DB] Finish querying session ${sessionKey}`);
   } catch (error) {
@@ -195,6 +215,74 @@ router.get("/session/:key", async (ctx) => {
       ctx.status = 502;
       ctx.body = { error: "Failed to fetch session data", detail: message };
     }
+  }
+});
+
+router.get("/session/:key/telemetry", async (ctx) => {
+  const sessionKey = ctx.params.key?.trim();
+  const driversRaw = ctx.query.drivers ?? ctx.query.driver;
+  const lapRaw = ctx.query.lap;
+  const sampleSecondsRaw =
+    ctx.query.sampleSeconds ?? ctx.query.sample ?? ctx.query.s;
+  const parsedSample = Number(sampleSecondsRaw);
+  const sampleSeconds =
+    Number.isFinite(parsedSample) && parsedSample > 0 ? parsedSample : null;
+
+  if (!sessionKey) {
+    ctx.status = 400;
+    ctx.body = { error: "Session key is required" };
+    return;
+  }
+
+  const driversList =
+    typeof driversRaw === "string"
+      ? driversRaw.split(",")
+      : Array.isArray(driversRaw)
+      ? driversRaw
+      : [];
+  const drivers = driversList
+    .map((value) => Number(String(value).trim()))
+    .filter((value) => Number.isFinite(value));
+  const uniqueDrivers = Array.from(new Set(drivers));
+
+  if (!uniqueDrivers.length || uniqueDrivers.length > 2) {
+    ctx.status = 400;
+    ctx.body = { error: "drivers must include 1 or 2 numeric identifiers" };
+    return;
+  }
+
+  const lapNumber = Number(lapRaw);
+  if (!Number.isFinite(lapNumber) || lapNumber <= 0) {
+    ctx.status = 400;
+    ctx.body = { error: "lap must be a positive number" };
+    return;
+  }
+
+  const resolved = await resolveSessionKey(sessionKey);
+  if (!resolved) {
+    ctx.status = 404;
+    ctx.body = { error: "Session not found" };
+    return;
+  }
+
+  try {
+    const telemetry = await fetchTelemetrySlice(
+      resolved.numericKey,
+      uniqueDrivers,
+      lapNumber,
+      sampleSeconds
+    );
+    ctx.body = {
+      sessionKey: resolved.alias ?? String(resolved.numericKey),
+      lapNumber,
+      drivers: uniqueDrivers,
+      sampleSeconds,
+      telemetry,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    ctx.status = 502;
+    ctx.body = { error: "Failed to fetch telemetry slice", detail: message };
   }
 });
 
@@ -549,7 +637,8 @@ export default app;
 
 async function getSessionData(
   requestKey: string,
-  sampleSeconds: number | null
+  sampleSeconds: number | null,
+  includeTelemetry: boolean
 ): Promise<SessionResponse> {
   const resolved = await resolveSessionKey(requestKey);
   if (!resolved) {
@@ -558,7 +647,8 @@ async function getSessionData(
   return loadSessionFromDatabase(
     resolved.numericKey,
     resolved.alias ?? requestKey,
-    sampleSeconds
+    sampleSeconds,
+    includeTelemetry
   );
 }
 
@@ -622,7 +712,8 @@ async function resolveSessionKey(
 async function loadSessionFromDatabase(
   sessionKey: number,
   requestKey: string,
-  sampleSeconds: number | null
+  sampleSeconds: number | null,
+  includeTelemetry: boolean
 ): Promise<SessionResponse> {
   let infoRows: Array<Record<string, unknown>> = [];
   try {
@@ -670,7 +761,9 @@ async function loadSessionFromDatabase(
   const sessionInfo = mapSessionInfo(infoRows[0]);
   const dataState = mapSessionDataState(infoRows[0].data_status);
   const lastRefreshed = toIsoNullable(infoRows[0].last_refreshed);
-  const telemetry = await fetchTelemetry(sessionKey, sampleSeconds);
+  const telemetry = includeTelemetry
+    ? await fetchTelemetry(sessionKey, sampleSeconds)
+    : [];
   const pitStops = await fetchPitStops(sessionKey);
   const raceControl = await fetchRaceControl(sessionKey);
   const stints = await fetchStints(sessionKey);
@@ -775,6 +868,75 @@ async function fetchTelemetry(
     z: toNullableNumber(row.z),
     latitude: toNullableNumber(row.latitude),
     longitude: toNullableNumber(row.longitude),
+  }));
+}
+
+async function fetchTelemetrySlice(
+  sessionKey: number,
+  drivers: number[],
+  lapNumber: number,
+  sampleSeconds: number | null
+): Promise<TelemetrySliceSample[]> {
+  const rows = sampleSeconds
+    ? ((await db`
+        SELECT
+          driver_number,
+          sample_time,
+          lap_number,
+          speed,
+          brake,
+          rpm,
+          n_gear,
+          throttle
+        FROM (
+          SELECT
+            driver_number,
+            sample_time,
+            lap_number,
+            speed,
+            brake,
+            rpm,
+            n_gear,
+            throttle,
+            ROW_NUMBER() OVER (
+              PARTITION BY driver_number,
+                time_bucket(${sampleSeconds} * INTERVAL '1 second', sample_time)
+              ORDER BY sample_time DESC
+            ) AS row_rank
+          FROM telemetry_samples
+          WHERE session_key = ${sessionKey}
+            AND lap_number = ${lapNumber}
+            AND driver_number = ANY(${drivers})
+        ) AS ranked
+        WHERE row_rank = 1
+        ORDER BY driver_number, sample_time
+      `) as Array<Record<string, unknown>>)
+    : ((await db`
+        SELECT
+          driver_number,
+          sample_time,
+          lap_number,
+          speed,
+          brake,
+          rpm,
+          n_gear,
+          throttle
+        FROM telemetry_samples
+        WHERE session_key = ${sessionKey}
+          AND lap_number = ${lapNumber}
+          AND driver_number = ANY(${drivers})
+        ORDER BY driver_number, sample_time
+      `) as Array<Record<string, unknown>>);
+
+  return rows.map((row) => ({
+    driver_number: toNumber(row.driver_number) ?? 0,
+    sample_time: toIso(row.sample_time),
+    lap_number: toNumber(row.lap_number),
+    speed: toNullableNumber(row.speed),
+    brake: toNullableNumber(row.brake),
+    rpm: toNullableNumber(row.rpm),
+    n_gear: toNullableNumber(row.n_gear),
+    throttle: toNullableNumber(row.throttle),
   }));
 }
 

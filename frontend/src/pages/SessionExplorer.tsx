@@ -11,16 +11,13 @@ import {
   buildDriverPriorityList,
   buildLapDetails,
   deriveLapOptions,
-  filterTelemetryByDriver,
-  findDriverWithTelemetry,
-  normalizeDriverNumber,
-  selectRecordsForView
+  findDriverWithLapData,
+  normalizeDriverNumber
 } from '../utils/telemetry';
 import { getDriverHistory } from '../utils/drivers';
 import sessionCatalog from '../data/sessionCatalog.json';
 import type { SessionCatalogEntry } from '../utils/sessionCatalog';
 import { buildSessionOptions } from '../utils/sessionCatalog';
-const MAX_DRIVER_POINTS = 1000;
 const DRIVER_MIN = 1;
 const DRIVER_MAX = 99;
 const cx = (...names: string[]) =>
@@ -53,7 +50,7 @@ function SessionExplorer() {
     selectedSessions.forEach((key) => {
       const session = sessions[key];
       if (!session) return;
-      [...(session.telemetry ?? []), ...(session.laps ?? []), ...(session.stints ?? [])].forEach((record) => {
+      [...(session.laps ?? []), ...(session.stints ?? [])].forEach((record) => {
         const driver = normalizeDriverNumber((record as Record<string, unknown>).driver_number);
         if (driver != null) sessionDrivers.add(driver);
       });
@@ -169,7 +166,7 @@ function SessionExplorer() {
       try {
         const results = await Promise.all(
           selectedSessions.map(async (sessionKey) => {
-            const data = await fetchSession(sessionKey, { sampleSeconds: 1 });
+            const data = await fetchSession(sessionKey, { includeTelemetry: false });
             return [sessionKey, data] as const;
           })
         );
@@ -318,7 +315,7 @@ function SessionPanel({
       <section className={cx('session-panel')}>
         <header>
           <h2>Session {sessionKey}</h2>
-          {loading ? <p className={cx('muted')}>Loading telemetry…</p> : <p className={cx('muted')}>No data available.</p>}
+          {loading ? <p className={cx('muted')}>Loading session…</p> : <p className={cx('muted')}>No data available.</p>}
         </header>
       </section>
     );
@@ -330,12 +327,8 @@ function SessionPanel({
     [preferredDriver]
   );
   const activeDriver = useMemo(
-    () => findDriverWithTelemetry(data.telemetry ?? [], driverPriorities),
-    [data.telemetry, driverPriorities]
-  );
-  const driverTelemetry = useMemo(
-    () => filterTelemetryByDriver(data.telemetry ?? [], activeDriver),
-    [data.telemetry, activeDriver]
+    () => findDriverWithLapData(data.laps ?? [], data.stints ?? [], driverPriorities),
+    [data.laps, data.stints, driverPriorities]
   );
   const lapDetails = useMemo(
     () => buildLapDetails(data.laps ?? [], activeDriver, sessionInfo?.date_start, sessionInfo?.date_end),
@@ -354,26 +347,6 @@ function SessionPanel({
     () => lapDetails.find((lap) => lap.lap_number === effectiveLapNumber) ?? null,
     [lapDetails, effectiveLapNumber]
   );
-
-  const displayedTelemetry = useMemo(() => {
-    if (!driverTelemetry.length) {
-      return [];
-    }
-
-    const slice = selectRecordsForView(driverTelemetry, lapRange, MAX_DRIVER_POINTS);
-    if (slice.length) {
-      const first = slice[0];
-      const last = slice[slice.length - 1];
-      const middle = slice[Math.floor(slice.length / 2)];
-      // eslint-disable-next-line no-console
-      console.log('[Telemetry]', sessionKey, 'driver', activeDriver, {
-        first,
-        middle,
-        last
-      });
-    }
-    return slice;
-  }, [driverTelemetry, lapRange, sessionKey, activeDriver]);
 
   const startDate = formatDate(sessionInfo?.date_start);
   const endDate = formatDate(sessionInfo?.date_end);
@@ -415,7 +388,7 @@ function SessionPanel({
               menuPlacement="auto"
               styles={driverSelectStyles}
             />
-            <small>Prefer this driver’s telemetry and stint summaries.</small>
+            <small>Prefer this driver’s stint summaries.</small>
           </div>
         }
       />
@@ -439,14 +412,14 @@ function SessionPanel({
                 </option>
               ))}
             </select>
-            <small>Shows only the selected lap’s telemetry when available.</small>
+            <small>Used for comparisons and map selection.</small>
           </div>
         </div>
         <TrackSpeedMap
           sessionKey={sessionKey}
           driverNumber={activeDriver}
           lapNumber={effectiveLapNumber}
-          fallbackPoints={displayedTelemetry}
+          fallbackPoints={[]}
         />
       </div>
       <DriverCompare session={data} selectedLap={effectiveLapNumber} preferredDriver={preferredDriver} />
