@@ -4,8 +4,8 @@
   "description": "Formula 1 data aggregation API",
   "main": "dist/server.js",
   "scripts": {
-    "build": "bunx tsc",
-    "start": "bun dist/server.js",
+    "build": "tsc",
+    "start": "node dist/server.js",
     "dev": "bun --watch src/server.ts",
     "import-session": "bun src/scripts/import-session.ts",
     "delete-session": "bun src/scripts/delete-session.ts",

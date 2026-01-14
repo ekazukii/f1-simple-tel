@@ -135,7 +135,7 @@ async function main() {
   }
 
   stream.end();
-  await new Promise((resolve) => stream.once("close", resolve));
+  await new Promise<void>((resolve) => stream.once("close", resolve));
   console.log(`[Export] CSV written to ${outputFile}`);
 }
 
@@ -257,8 +257,8 @@ async function buildLapRows(
     const { minGap, pairsLt1s } = computeGapStats(entries);
     const pitCount = pitStopsByLap.get(lap) ?? 0;
     const avgTyreAge = computeAverageTyreAge(stintsByDriver, lap, numCarsRunning);
-    const minGapValue = minGap ?? lastMinGap;
-    const avgTyreValue = avgTyreAge ?? lastAvgTyre;
+    const minGapValue: number | null = minGap ?? lastMinGap;
+    const avgTyreValue: number | null = avgTyreAge ?? lastAvgTyre;
     const weatherSample = pickWeatherSample(weatherTimeline, leaderFinish);
     const scActive = isTimeInIntervals(leaderFinish, scData.scIntervals) ? 1 : 0;
     const vscActive = isTimeInIntervals(leaderFinish, scData.vscIntervals) ? 1 : 0;

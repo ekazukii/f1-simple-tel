@@ -550,13 +550,13 @@ async function importSession(
       return {
         session_key: sessionKey,
         recorded_at,
-        air_temperature: toNullableNumber(sample.air_temperature),
-        humidity: toNullableNumber(sample.humidity),
-        pressure: toNullableNumber(sample.pressure),
-        rainfall: toNullableNumber(sample.rainfall),
-        track_temperature: toNullableNumber(sample.track_temperature),
-        wind_direction: toNullableNumber(sample.wind_direction),
-        wind_speed: toNullableNumber(sample.wind_speed),
+        air_temperature: toNumber(sample.air_temperature),
+        humidity: toNumber(sample.humidity),
+        pressure: toNumber(sample.pressure),
+        rainfall: toNumber(sample.rainfall),
+        track_temperature: toNumber(sample.track_temperature),
+        wind_direction: toNumber(sample.wind_direction),
+        wind_speed: toNumber(sample.wind_speed),
       };
     })
     .filter((row): row is WeatherRow => row !== null);
@@ -921,33 +921,11 @@ function formatIntArray(values: Array<number | null> | null) {
 async function insertTelemetry(tx: typeof db, rows: TelemetryRow[]) {
   for (const chunk of chunkArray(rows, BATCH_SIZE)) {
     const uniqueRows = dedupeTelemetryRows(chunk);
-    const values = uniqueRows.map((row) =>
-      TELEMETRY_COLUMNS.map((column) => {
-        const key = column as keyof TelemetryRow;
-        const value = row[key];
-        return value ?? null;
-      })
-    );
+    if (!uniqueRows.length) {
+      continue;
+    }
     await tx`
-      INSERT INTO telemetry_samples (
-        session_key,
-        meeting_key,
-        driver_number,
-        sample_time,
-        lap_number,
-        drs,
-        speed,
-        brake,
-        rpm,
-        n_gear,
-        throttle,
-        x,
-        y,
-        z,
-        latitude,
-        longitude
-      )
-      VALUES ${tx(values)}
+      INSERT INTO telemetry_samples ${tx(uniqueRows, TELEMETRY_COLUMNS)}
       ON CONFLICT (session_key, driver_number, sample_time) DO UPDATE SET
         drs = EXCLUDED.drs,
         speed = EXCLUDED.speed,
