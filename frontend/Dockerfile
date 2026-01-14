@@ -11,7 +11,7 @@ ENV VITE_BACKEND_URL=${BACKEND_URL}
 RUN npm run build
 
 FROM nginx:1.27-alpine
-COPY --from=builder /app/build/client /usr/share/nginx/html
+COPY --from=builder /app/dist /usr/share/nginx/html
 COPY <<'NGINX' /etc/nginx/conf.d/default.conf
 server {
   listen 80;
