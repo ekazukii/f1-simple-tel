@@ -22,15 +22,21 @@ RUN mkdir -p /app/session-cache
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
     python3 \
+    python3-venv \
     python3-pip \
     libglib2.0-0 \
     libgl1 \
     libgomp1 \
   && rm -rf /var/lib/apt/lists/*
 
-RUN python3 -m pip install --no-cache-dir --upgrade pip \
-  && python3 -m pip install --no-cache-dir numpy pandas joblib matplotlib tqdm \
-  && python3 -m pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+ENV VIRTUAL_ENV=/opt/venv
+RUN python3 -m venv $VIRTUAL_ENV
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+ENV PYTHON_BIN="$VIRTUAL_ENV/bin/python"
+
+RUN pip install --no-cache-dir --upgrade pip \
+  && pip install --no-cache-dir numpy pandas joblib matplotlib tqdm \
+  && pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 
 ENV PORT=4000
 EXPOSE 4000
