@@ -24,6 +24,11 @@ RUN apt-get update \
     python3 \
     python3-venv \
     python3-pip \
+    python3-dev \
+    build-essential \
+    gfortran \
+    pkg-config \
+    libopenblas-dev \
     libglib2.0-0 \
     libgl1 \
     libgomp1 \
@@ -35,7 +40,8 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 ENV PYTHON_BIN="$VIRTUAL_ENV/bin/python"
 
 RUN pip install --no-cache-dir --upgrade pip \
-  && pip install --no-cache-dir numpy pandas joblib matplotlib tqdm \
+  && pip install --no-cache-dir --no-binary=numpy numpy \
+  && pip install --no-cache-dir pandas joblib matplotlib tqdm \
   && pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 
 ENV PORT=4000
