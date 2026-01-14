@@ -409,84 +409,118 @@ function GaragePortal() {
             <section className={cx("garage-section")}>
               <h1>About this project</h1>
               <p className={cx("lead")}>
-                This is a telemetry studio and race strategy laboratory built to
-                turn raw Formula 1 timing data into decisions. It connects live
-                session data, a replay engine, and a Monte Carlo simulator so
-                that strategy discussions are grounded in measurable outcomes.
+                Hello, this website is a personal data science laboratory where
+                I experiment with Formula 1 data, telemetry, results, and race
+                simulation. The goal is to represent publicly available data in
+                ways that make a race easier to read, and to build a race
+                simulator that is as precise as public data allows, so I can
+                test strategies such as compound mixes and pit stop timings.
+                And, as you saw earlier, useless 3D animation.
               </p>
             </section>
             <section className={cx("garage-section")}>
-              <h2>Data foundation</h2>
-              <ul>
-                <li>
-                  High-frequency car and location data is normalized into a
-                  time-series store, keeping telemetry queryable by session,
-                  driver, and timestamp.
-                </li>
-                <li>
-                  The model favors time-based sampling for interactivity, so the
-                  UI can stay fast without losing the shape of the lap.
-                </li>
-                <li>
-                  Session metadata, stints, pit stops, and weather are stored
-                  alongside telemetry to keep context intact.
-                </li>
-              </ul>
+              <h2>Session explorer &amp; race replayer</h2>
+              <p>
+                Both pages are based on the same data source,{" "}
+                <a href="https://openf1.org/" target="_blank" rel="noreferrer">
+                  openf1.org
+                </a>
+                , which provides telemetry and historical race data from 2022
+                onwards. I mirror that data into a local TimescaleDB for
+                time-series telemetry and keep the rest of the records in
+                Postgres. If it can help someone, a dump of the database with
+                full data up to the end of 2025 is available{' '}
+                <a href="/dumps/f1_db_no_telemetry.dump">here</a>.
+              </p>
+              <p>
+                Each race telemetry set can reach ~250 MB, which is slow to
+                download if you just want to see a trace. To speed things up, I
+                precompute the speed trace for every lap of every race once and
+                store it as an SVG in the app. Since the image is a single path
+                with a fixed palette, the SVG can be optimized down to roughly 7
+                KB while keeping good visual quality. If you are interested, you
+                can download the 2025 trace set{' '}
+                <a href="/dumps/track_speed_maps_2025.tar.gz">right here</a>.
+              </p>
+              <p>
+                The race replayer needs the position of every driver at any
+                moment. OpenF1 telemetry runs at ~3.3 Hz, and with 20 cars
+                across a two-hour race, that is more than five million
+                positions. For slower connections, the frontend first loads a
+                downsampled version (one position every five seconds per driver)
+                so you can start watching immediately, then it swaps in the
+                full-resolution positions without interrupting playback. This
+                keeps the initial download under a megabyte while still
+                delivering smooth replay once the full data is in.
+              </p>
             </section>
             <section className={cx("garage-section")}>
-              <h2>Architecture choices</h2>
+              <h2>Strategy lab · how it is built</h2>
+              <p>
+                The goal is to compare two strategies—pit timing and compound
+                choices—by simulating a very large number of races (Monte Carlo)
+                that are as realistic as public data allows. It is opinionated
+                about speed vs. fidelity: it must answer “Strategy A vs B”
+                questions quickly, while keeping each piece explainable.
+                Everything runs in modular blocks so any component can be
+                swapped or tuned without rewriting the whole thing.
+              </p>
+              <h3>Data and feature engineering</h3>
+              <p>
+                Public lap and timing data is cleaned into per-lap rows (one per
+                driver per lap) and per-stint summaries. Core features include:
+                categorical context (driver, team, circuit, year, session), tyre
+                compound and age, fuel-load proxy (laps remaining), track
+                evolution spline (lap progress), weather (air/track temp,
+                humidity, pressure, wind, wet flag), and traffic signals (gap,
+                DRS availability) for overtakes. Circuit/year medians and
+                variances act as priors when data is sparse.
+              </p>
+              <h3>Model blocks (composed)</h3>
               <ul>
                 <li>
-                  A thin backend API exposes read-optimized endpoints so the
-                  frontend stays lightweight and stateless.
+                  Clean pace: context embeddings
+                  (driver/team/circuit/year/session), fuel term, track evolution
+                  spline, tyre age with a “knee,” weather adjustment, and a pull
+                  toward global medians when data is thin.
+                </li>
+                <li>Traffic: gap-based slowdown that eases with DRS.</li>
+                <li>
+                  Pit loss: per-circuit mean/std with a floor and occasional
+                  long tails.
+                </li>
+                <li>DNF: progress-based hazard over the race distance.</li>
+                <li>
+                  Safety car: probabilistic state machine changes that reshape
+                  lap times.
                 </li>
                 <li>
-                  The simulation engine runs in Python to leverage numeric
-                  tooling, while the web layer stays in TypeScript for
-                  reliability and developer velocity.
-                </li>
-                <li>
-                  Simulation progress streams as JSON lines, enabling live
-                  updates without blocking the UI.
+                  Overtakes: attempts and time deltas driven by gap, tyre
+                  advantage, and DRS, which can reorder the field.
                 </li>
               </ul>
-            </section>
-            <section className={cx("garage-section")}>
-              <h2>Product modules</h2>
-              <ul>
-                <li>
-                  <strong>Session Explorer</strong> turns telemetry, stints, and
-                  lap timing into a readable session snapshot.
-                </li>
-                <li>
-                  <strong>Race Replayer</strong> reconstructs car positions and
-                  race events into a time-accurate playback.
-                </li>
-                <li>
-                  <strong>Strategy Lab</strong> compares Strategy A vs B with
-                  consistent randomness and detailed per-lap metrics.
-                </li>
-              </ul>
-            </section>
-            <section className={cx("garage-section")}>
-              <h2>Simulation integrity</h2>
-              <ul>
-                <li>
-                  Strategies share the same random conditions per run so the
-                  comparison is fair.
-                </li>
-                <li>
-                  Pit loss uses a hard floor with a long tail to reflect
-                  real-world constraints.
-                </li>
-                <li>
-                  Safety car and rain scenarios are injected or sampled so the
-                  engine can model strategic risk.
-                </li>
-                <li>
-                  Seeds are explicit for reproducibility and auditability.
-                </li>
-              </ul>
+              <h3>Simulation loop</h3>
+              <p>
+                Each run takes two strategies, race length, optional SC/rain
+                overrides, seeds, and noise. It builds lap-wise features (fuel,
+                weather, track evolution), fills pit windows, and then steps
+                through laps: apply SC/rain state, predict clean pace, add
+                traffic effects, sample overtakes and DNFs, and apply pit stops
+                with sampled loss before logging the lap. The focus is to stay
+                close to real race dynamics while staying fast enough to run
+                thousands of simulations.
+              </p>
+              <h3>Monte Carlo comparison, auto strategy, tuning</h3>
+              <p>
+                It runs many races with shared randomness so Strategy A vs B is
+                fair. Results include win/podium rates, average finish,
+                lap-by-lap averages, and SC frequencies, and can focus on one
+                driver. Missing pit windows are filled from a circuit/year
+                strategy library or evenly spaced defaults. Defaults favor
+                speed, but you can tweak SC/rain laps, pit-loss variability,
+                overtaking aggressiveness, and output detail to trade fidelity
+                for runtime.
+              </p>
             </section>
           </div>
         </div>

@@ -34,6 +34,23 @@ export interface TelemetrySample extends Record<string, unknown> {
   longitude: number | null;
 }
 
+export interface SessionTelemetrySample extends Record<string, unknown> {
+  driver_number: number;
+  sample_time: string;
+  x?: number | null;
+  y?: number | null;
+  lap_number?: number | null;
+  drs?: number | null;
+  speed?: number | null;
+  brake?: number | null;
+  rpm?: number | null;
+  n_gear?: number | null;
+  throttle?: number | null;
+  z?: number | null;
+  latitude?: number | null;
+  longitude?: number | null;
+}
+
 export interface TelemetrySliceSample extends Record<string, unknown> {
   driver_number: number;
   sample_time: string;
@@ -94,7 +111,7 @@ export interface OpenF1SessionData {
   dataState: 'none' | 'no_telemetry' | 'with_telemetry';
   lastRefreshed: string | null;
   sessionInfo: SessionMeta;
-  telemetry: TelemetrySample[];
+  telemetry: SessionTelemetrySample[];
   pitStops: PitStopRecord[];
   raceControl: RaceControlRecord[];
   stints: StintRecord[];
