@@ -562,6 +562,7 @@ async function importSession(
     .filter((row): row is WeatherRow => row !== null);
 
   await db.begin(async (tx) => {
+    const sql = tx as typeof db;
     const hasTelemetry = telemetryRows.length > 0;
     const sessionDataStatus = hasTelemetry ? "with_telemetry" : "no_telemetry";
     const refreshedAt = new Date();
@@ -587,8 +588,8 @@ async function importSession(
       meeting_official_name: nullableString(meetingMeta?.meeting_official_name),
     };
 
-    await tx`
-      INSERT INTO meetings ${tx({
+    await sql`
+      INSERT INTO meetings ${sql({
         meeting_key: meetingKey,
         ...mergedMeeting,
       })}
@@ -605,8 +606,8 @@ async function importSession(
         meeting_official_name = EXCLUDED.meeting_official_name
     `;
 
-    await tx`
-      INSERT INTO sessions ${tx({
+    await sql`
+      INSERT INTO sessions ${sql({
         session_key: sessionKey,
         meeting_key: meetingKey,
         session_type: info.session_type,
@@ -636,8 +637,8 @@ async function importSession(
     }
 
     for (const aliasValue of aliasValues) {
-      await tx`
-        INSERT INTO session_aliases ${tx({
+      await sql`
+        INSERT INTO session_aliases ${sql({
           alias: aliasValue,
           session_key: sessionKey,
         })}
@@ -645,30 +646,30 @@ async function importSession(
       `;
     }
 
-    await tx`DELETE FROM telemetry_samples WHERE session_key = ${sessionKey}`;
-    await tx`DELETE FROM pit_stops WHERE session_key = ${sessionKey}`;
-    await tx`DELETE FROM race_control_events WHERE session_key = ${sessionKey}`;
-    await tx`DELETE FROM stints WHERE session_key = ${sessionKey}`;
-    await tx`DELETE FROM laps WHERE session_key = ${sessionKey}`;
-    await tx`DELETE FROM weather_samples WHERE session_key = ${sessionKey}`;
+    await sql`DELETE FROM telemetry_samples WHERE session_key = ${sessionKey}`;
+    await sql`DELETE FROM pit_stops WHERE session_key = ${sessionKey}`;
+    await sql`DELETE FROM race_control_events WHERE session_key = ${sessionKey}`;
+    await sql`DELETE FROM stints WHERE session_key = ${sessionKey}`;
+    await sql`DELETE FROM laps WHERE session_key = ${sessionKey}`;
+    await sql`DELETE FROM weather_samples WHERE session_key = ${sessionKey}`;
 
     if (telemetryRows.length) {
-      await insertTelemetry(tx, telemetryRows);
+      await insertTelemetry(sql, telemetryRows);
     }
     if (pitRows.length) {
-      await insertPitStops(tx, pitRows);
+      await insertPitStops(sql, pitRows);
     }
     if (raceControlRows.length) {
-      await insertRaceControl(tx, raceControlRows);
+      await insertRaceControl(sql, raceControlRows);
     }
     if (stintRows.length) {
-      await insertStints(tx, stintRows);
+      await insertStints(sql, stintRows);
     }
     if (lapRows.length) {
-      await insertLaps(tx, lapRows);
+      await insertLaps(sql, lapRows);
     }
     if (weatherRows.length) {
-      await insertWeather(tx, weatherRows);
+      await insertWeather(sql, weatherRows);
     }
 
   });

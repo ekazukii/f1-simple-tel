@@ -37,8 +37,9 @@ async function runMigrations() {
 
     console.log(`[DB] Applying migration ${migration.id}`);
     await db.begin(async (tx) => {
-      await migration.up(tx);
-      await tx`INSERT INTO schema_migrations (id) VALUES (${migration.id})`;
+      const sql = tx as typeof db;
+      await migration.up(sql);
+      await sql`INSERT INTO schema_migrations (id) VALUES (${migration.id})`;
     });
     console.log(`[DB] Migration ${migration.id} applied`);
   }
