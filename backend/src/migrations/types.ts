@@ -1,6 +1,6 @@
-import type { Sql } from "postgres";
+import type { SqlClient } from "../types/sql";
 
 export interface Migration {
   id: string;
-  up: (sql: Sql) => Promise<void>;
+  up: (sql: SqlClient) => Promise<void>;
 }

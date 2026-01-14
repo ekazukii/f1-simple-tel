@@ -63,12 +63,11 @@ async function syncSessionWeather(sessionKey: string) {
   }
 
   await db.begin(async (tx) => {
-    const sql = tx as typeof db;
     const numericKey = Number(sessionKey);
-    await sql`DELETE FROM weather_samples WHERE session_key = ${numericKey}`;
+    await tx`DELETE FROM weather_samples WHERE session_key = ${numericKey}`;
     for (const row of rows) {
-      await sql`
-        INSERT INTO weather_samples ${sql({ ...row, session_key: numericKey })}
+      await tx`
+        INSERT INTO weather_samples ${tx({ ...row, session_key: numericKey })}
         ON CONFLICT (session_key, recorded_at) DO UPDATE SET
           air_temperature = EXCLUDED.air_temperature,
           humidity = EXCLUDED.humidity,

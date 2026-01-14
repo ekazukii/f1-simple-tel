@@ -1,5 +1,6 @@
 import postgres from "postgres";
 import { migrations } from "./migrations";
+import type { SqlClient } from "./types/sql";
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -11,7 +12,7 @@ if (!databaseUrl) {
 
 export const db = postgres(databaseUrl, {
   prepare: false,
-});
+}) as unknown as SqlClient;
 
 export async function initializeDatabase() {
   await db`
@@ -37,7 +38,7 @@ async function runMigrations() {
 
     console.log(`[DB] Applying migration ${migration.id}`);
     await db.begin(async (tx) => {
-      const sql = tx as typeof db;
+      const sql = tx;
       await migration.up(sql);
       await sql`INSERT INTO schema_migrations (id) VALUES (${migration.id})`;
     });

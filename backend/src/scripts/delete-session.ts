@@ -51,13 +51,12 @@ async function resolveSessionKey(identifier: string) {
 
 async function deleteSession({ sessionKey }: { sessionKey: number }) {
   await db.begin(async (tx) => {
-    const sql = tx as typeof db;
-    await sql`DELETE FROM telemetry_samples WHERE session_key = ${sessionKey}`;
-    await sql`DELETE FROM pit_stops WHERE session_key = ${sessionKey}`;
-    await sql`DELETE FROM race_control_events WHERE session_key = ${sessionKey}`;
-    await sql`DELETE FROM stints WHERE session_key = ${sessionKey}`;
-    await sql`DELETE FROM laps WHERE session_key = ${sessionKey}`;
-    await sql`DELETE FROM session_aliases WHERE session_key = ${sessionKey}`;
-    await sql`DELETE FROM sessions WHERE session_key = ${sessionKey}`;
+    await tx`DELETE FROM telemetry_samples WHERE session_key = ${sessionKey}`;
+    await tx`DELETE FROM pit_stops WHERE session_key = ${sessionKey}`;
+    await tx`DELETE FROM race_control_events WHERE session_key = ${sessionKey}`;
+    await tx`DELETE FROM stints WHERE session_key = ${sessionKey}`;
+    await tx`DELETE FROM laps WHERE session_key = ${sessionKey}`;
+    await tx`DELETE FROM session_aliases WHERE session_key = ${sessionKey}`;
+    await tx`DELETE FROM sessions WHERE session_key = ${sessionKey}`;
   });
 }

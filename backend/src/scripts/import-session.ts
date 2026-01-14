@@ -5,9 +5,11 @@ import { promisify } from "util";
 import process from "process";
 import { initializeDatabase, db } from "../database";
 import { OpenF1SessionData, fetchOpenF1Session } from "../datasources/openf1org";
+import type { SqlClient } from "../types/sql";
 
 const gunzipAsync = promisify(gunzip);
 const BATCH_SIZE = 1000;
+type DbSql = SqlClient;
 
 type TelemetryRow = {
   session_key: number;
@@ -562,7 +564,7 @@ async function importSession(
     .filter((row): row is WeatherRow => row !== null);
 
   await db.begin(async (tx) => {
-    const sql = tx as typeof db;
+    const sql = tx;
     const hasTelemetry = telemetryRows.length > 0;
     const sessionDataStatus = hasTelemetry ? "with_telemetry" : "no_telemetry";
     const refreshedAt = new Date();
@@ -919,7 +921,7 @@ function formatIntArray(values: Array<number | null> | null) {
   return `{${body}}`;
 }
 
-async function insertTelemetry(tx: typeof db, rows: TelemetryRow[]) {
+async function insertTelemetry(tx: DbSql, rows: TelemetryRow[]) {
   for (const chunk of chunkArray(rows, BATCH_SIZE)) {
     const uniqueRows = dedupeTelemetryRows(chunk);
     if (!uniqueRows.length) {
@@ -943,7 +945,7 @@ async function insertTelemetry(tx: typeof db, rows: TelemetryRow[]) {
   }
 }
 
-async function insertPitStops(tx: typeof db, rows: PitStopRow[]) {
+async function insertPitStops(tx: DbSql, rows: PitStopRow[]) {
   for (const row of rows) {
     await tx`
       INSERT INTO pit_stops (
@@ -969,7 +971,7 @@ async function insertPitStops(tx: typeof db, rows: PitStopRow[]) {
   }
 }
 
-async function insertRaceControl(tx: typeof db, rows: RaceControlRow[]) {
+async function insertRaceControl(tx: DbSql, rows: RaceControlRow[]) {
   for (const row of rows) {
     await tx`
       INSERT INTO race_control_events (
@@ -1000,7 +1002,7 @@ async function insertRaceControl(tx: typeof db, rows: RaceControlRow[]) {
   }
 }
 
-async function insertStints(tx: typeof db, rows: StintRow[]) {
+async function insertStints(tx: DbSql, rows: StintRow[]) {
   for (const row of rows) {
     await tx`
       INSERT INTO stints (
@@ -1032,7 +1034,7 @@ async function insertStints(tx: typeof db, rows: StintRow[]) {
   }
 }
 
-async function insertLaps(tx: typeof db, rows: LapRow[]) {
+async function insertLaps(tx: DbSql, rows: LapRow[]) {
   for (const row of rows) {
     await tx`
       INSERT INTO laps (
@@ -1088,7 +1090,7 @@ async function insertLaps(tx: typeof db, rows: LapRow[]) {
   }
 }
 
-async function insertWeather(tx: typeof db, rows: WeatherRow[]) {
+async function insertWeather(tx: DbSql, rows: WeatherRow[]) {
   for (const chunk of chunkArray(rows, BATCH_SIZE)) {
     await tx`
       INSERT INTO weather_samples ${tx(chunk)}
