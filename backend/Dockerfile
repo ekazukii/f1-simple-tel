@@ -40,7 +40,7 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 ENV PYTHON_BIN="$VIRTUAL_ENV/bin/python"
 
 RUN pip install --no-cache-dir --upgrade pip \
-  && pip install --no-cache-dir --no-binary=numpy numpy \
+  && pip install --no-cache-dir "numpy<2.4" \
   && pip install --no-cache-dir pandas joblib matplotlib tqdm \
   && pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 
