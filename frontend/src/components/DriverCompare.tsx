@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
 import sharedStyles from '../styles/Shared.module.css';
 import styles from '../styles/DriverCompare.module.css';
 import type { OpenF1SessionData, TelemetrySliceSample } from '../types';

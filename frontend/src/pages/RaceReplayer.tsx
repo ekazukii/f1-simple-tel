@@ -358,32 +358,33 @@ export function RaceReplayer() {
         crashSlots.set(driver, index);
       });
 
-    return timelines
-      .map((timeline) => {
-        const sample = getSampleAtTime(timeline.samples, currentTime);
-        if (!sample) {
-          return null;
-        }
-        const crashStart = crashStartTimes.get(timeline.driver);
-        const crashed = crashStart != null && currentTime >= crashStart;
-        if (crashed && CRASH_RENDER_MODE === "hide") {
-          return null;
-        }
-        const baseLabel = buildDriverLabel(
-          timeline.driver,
-          session?.sessionInfo?.date_start
-        );
-        return {
-          driver: timeline.driver,
-          x: sample.x,
-          y: sample.y,
-          color: crashed ? "#9ca3af" : getDriverColor(timeline.driver),
-          label: crashed ? `${baseLabel} (OUT)` : baseLabel,
-          status: crashed ? "crashed" : "active",
-          crashSlot: crashed ? crashSlots.get(timeline.driver) : undefined,
-        };
-      })
-      .filter((point): point is ReplayPoint => Boolean(point));
+    const points: ReplayPoint[] = [];
+    timelines.forEach((timeline) => {
+      const sample = getSampleAtTime(timeline.samples, currentTime);
+      if (!sample) {
+        return;
+      }
+      const crashStart = crashStartTimes.get(timeline.driver);
+      const crashed = crashStart != null && currentTime >= crashStart;
+      if (crashed && CRASH_RENDER_MODE === "hide") {
+        return;
+      }
+      const baseLabel = buildDriverLabel(
+        timeline.driver,
+        session?.sessionInfo?.date_start
+      );
+      points.push({
+        driver: timeline.driver,
+        x: sample.x,
+        y: sample.y,
+        color: crashed ? "#9ca3af" : getDriverColor(timeline.driver),
+        label: crashed ? `${baseLabel} (OUT)` : baseLabel,
+        status: crashed ? "crashed" : "active",
+        crashSlot: crashed ? crashSlots.get(timeline.driver) : undefined,
+      });
+    });
+
+    return points;
   }, [
     timelines,
     currentTime,
@@ -634,25 +635,6 @@ function buildLapTimeline(laps: LapRecord[]): Map<number, LapTiming[]> {
   });
   map.forEach((entries) => entries.sort((a, b) => a.time - b.time));
   return map;
-}
-
-function getLastLapBefore(laps: LapTiming[], time: number) {
-  let left = 0;
-  let right = laps.length - 1;
-  let best: LapTiming | null = null;
-
-  while (left <= right) {
-    const mid = Math.floor((left + right) / 2);
-    const candidate = laps[mid];
-    if (candidate.time <= time) {
-      best = candidate;
-      left = mid + 1;
-    } else {
-      right = mid - 1;
-    }
-  }
-
-  return best;
 }
 
 function computeCrashStartTime(

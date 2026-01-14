@@ -267,6 +267,7 @@ interface TimelineRow {
   driver: number;
   stints: StintSegment[];
   sessionDate: string;
+  label?: string;
 }
 
 function buildStintTimeline(stints: Record<string, unknown>[], maxLap: number, sessionDate: string): TimelineRow[] {

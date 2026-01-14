@@ -191,7 +191,7 @@ function GaragePortal() {
 
     const loadGLB = (url: string) =>
       new Promise<THREE.Object3D>((resolve, reject) =>
-        loader.load(url, (gltf) => resolve(gltf.scene), undefined, reject)
+        loader.load(url, (gltf: { scene: THREE.Object3D }) => resolve(gltf.scene), undefined, reject)
       );
 
     const init = async () => {
@@ -202,6 +202,9 @@ function GaragePortal() {
         alpha: true,
         stencil: true,
       });
+      if (!renderer) {
+        return;
+      }
       const setRendererSize = () => {
         const w = window.innerWidth;
         const h = Math.max(window.innerHeight, 720);
@@ -244,9 +247,11 @@ function GaragePortal() {
         if (portalSource && portalSource.isMesh) {
           portalSource.visible = false;
           portalMask = new THREE.Mesh(portalSource.geometry, maskMat);
-          portalMask.matrixAutoUpdate = false;
-          sceneMask.add(portalMask);
-          portalIsStatic = true;
+          if (portalMask) {
+            portalMask.matrixAutoUpdate = false;
+            sceneMask.add(portalMask);
+            portalIsStatic = true;
+          }
         }
 
         carRoot = pickCarRoot(worldRoot, drsFlap, portalSource);

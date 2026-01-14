@@ -565,14 +565,17 @@ function PositionComparisonChart({ series }: { series: PositionSeries | null | u
   )
 }
 
-function formatValue(value: unknown, column: string) {
+function formatValue(value: unknown, column: string): string | number {
   if (typeof value === 'number') {
     if (column.includes('wins') || column.includes('podiums') || column.includes('dnf') || column.includes('sc_laps')) {
       return Math.round(value)
     }
-    return value.toFixed(2)
+    return Number.isFinite(value) ? value.toFixed(2) : '-'
   }
-  return value ?? '-'
+  if (typeof value === 'string') {
+    return value
+  }
+  return '-'
 }
 
 function StrategySimulator() {
@@ -603,7 +606,6 @@ function StrategySimulator() {
   const [wins, setWins] = useState<Record<string, number>>({})
   const [podiums, setPodiums] = useState<Record<string, number>>({})
   const [avgFinish, setAvgFinish] = useState<Record<string, number>>({})
-  const [logLines, setLogLines] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<StrategyComparisonOutput | null>(null)
 
@@ -624,7 +626,7 @@ function StrategySimulator() {
     }
   }, [controlledDriver, gridDrivers])
 
-  const summaryRows = result?.strategy_comparison.avg_finish ?? []
+  const summaryRows: Array<Record<string, unknown>> = result?.strategy_comparison.avg_finish ?? []
   const columns = useMemo(() => {
     const defaultCols = [
       'driver_id',
@@ -746,14 +748,14 @@ function StrategySimulator() {
         })
         .join(' | ')
       const header = `Auto strategies ${event.strategy} (${event.circuit_id} ${event.year}): ${items}`
-      setLogLines((prev) => [header, ...prev].slice(0, 40))
+      console.info(header)
     } else if (event.event === 'result') {
       setResult(event.data)
       setShowSetup(false)
     } else if (event.event === 'error') {
       setError(event.message)
     } else if (event.event === 'stderr' || event.event === 'log') {
-      setLogLines((prev) => [event.message, ...prev].slice(0, 40))
+      console.info(event.message)
     }
   }
 
@@ -941,7 +943,6 @@ function StrategySimulator() {
   const runSimulation = async () => {
     setError(null)
     setResult(null)
-    setLogLines([])
     setWins({})
     setPodiums({})
     setAvgFinish({})
@@ -1033,7 +1034,6 @@ function StrategySimulator() {
     stopSimulation()
     setResult(null)
     setError(null)
-    setLogLines([])
     setProgress(0)
     setWins({})
     setPodiums({})

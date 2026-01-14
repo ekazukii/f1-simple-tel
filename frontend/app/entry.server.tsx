@@ -38,7 +38,7 @@ export default function handleRequest(
         [readyOption]() {
           shellRendered = true;
           const body = new PassThrough({
-            final(callback) {
+            final(callback: (error?: Error | null) => void) {
               clearTimeout(timeoutId);
               callback();
             }
