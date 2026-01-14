@@ -41,7 +41,7 @@ ENV PYTHON_BIN="$VIRTUAL_ENV/bin/python"
 
 RUN pip install --no-cache-dir --upgrade pip \
   && pip install --no-cache-dir "numpy<2.4" \
-  && pip install --no-cache-dir pandas joblib matplotlib tqdm \
+  && pip install --no-cache-dir pandas scipy joblib matplotlib tqdm scikit-learn \
   && pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 
 ENV PORT=4000
