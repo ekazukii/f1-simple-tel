@@ -30,6 +30,8 @@ jobs:
         with:
           context: .
           file: ./backend/Dockerfile
+          build-args: |
+            DATABASE_URL=${{ secrets.DATABASE_URL }}
           push: true
           tags: |
             ${{ env.BACKEND_IMAGE }}:latest

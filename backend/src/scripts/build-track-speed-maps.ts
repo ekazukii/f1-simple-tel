@@ -418,23 +418,27 @@ async function main() {
   const { force, sessions } = parseArgs(process.argv.slice(2));
   await fs.mkdir(OUT_DIR, { recursive: true });
 
-  const sessionRows = await fetchRaceSessions();
-  const targets = sessions.length
-    ? sessionRows.filter((session) => sessions.includes(session.session_key))
-    : sessionRows;
+  try {
+    const sessionRows = await fetchRaceSessions();
+    const targets = sessions.length
+      ? sessionRows.filter((session) => sessions.includes(session.session_key))
+      : sessionRows;
 
-  if (!targets.length) {
-    console.log("[TRACK SPEED] No race sessions found");
-    return;
-  }
+    if (!targets.length) {
+      console.log("[TRACK SPEED] No race sessions found");
+      return;
+    }
 
-  for (const session of targets) {
-    const label = session.circuit_short_name ?? "Unknown circuit";
-    const year = session.year ? ` ${session.year}` : "";
-    console.log(
-      `[TRACK SPEED] Session ${session.session_key} (${label}${year})`
-    );
-    await buildForSession(session, force);
+    for (const session of targets) {
+      const label = session.circuit_short_name ?? "Unknown circuit";
+      const year = session.year ? ` ${session.year}` : "";
+      console.log(
+        `[TRACK SPEED] Session ${session.session_key} (${label}${year})`
+      );
+      await buildForSession(session, force);
+    }
+  } finally {
+    await db.end({ timeout: 5 });
   }
 }
 
