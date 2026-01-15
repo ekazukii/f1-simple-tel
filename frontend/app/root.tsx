@@ -53,7 +53,7 @@ export function Layout({ children }: { children: ReactNode }) {
         <Links />
         <script
           defer
-          src="http://umamiprod.ekazuki.fr/script.js"
+          src="https://umamiprod.ekazuki.fr/script.js"
           data-website-id="44ca271f-21ff-4bfc-b768-a7110228f5eb"
         ></script>
       </head>
