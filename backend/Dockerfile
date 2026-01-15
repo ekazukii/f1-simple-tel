@@ -9,12 +9,19 @@ COPY backend/tsconfig.json ./
 COPY backend/src ./src
 RUN npm run build
 
+ARG DATABASE_URL
+RUN if [ -z "$DATABASE_URL" ]; then echo "DATABASE_URL build arg required to generate assets" && exit 1; fi
+ENV DATABASE_URL=$DATABASE_URL
+RUN node dist/scripts/build-track-heatmaps.js \
+  && node dist/scripts/build-track-speed-maps.js
+
 FROM node:24-slim
 WORKDIR /app
 
 COPY --from=builder /app/package.json /app/package-lock.json ./
 RUN npm install --omit=dev
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/assets ./assets
 COPY backend/session-cache ./session-cache
 COPY models ./models
 RUN mkdir -p /app/session-cache
