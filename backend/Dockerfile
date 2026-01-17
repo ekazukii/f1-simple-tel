@@ -19,7 +19,6 @@ WORKDIR /app
 
 COPY --from=builder /app/publish ./
 COPY --from=builder /app/assets ./assets
-COPY backend/session-cache ./session-cache
 COPY models ./models
 RUN mkdir -p /app/session-cache
 
