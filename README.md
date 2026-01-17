@@ -4,15 +4,15 @@ This repository hosts both the backend API and frontend dashboard for the Formul
 
 ## Workspaces
 
-- `backend/` – Koa + TypeScript service that serves telemetry stored in TimescaleDB.
+- `backend/` – ASP.NET Core + C# service that serves telemetry stored in TimescaleDB.
 - `frontend/` – React + Vite app for displaying aggregated telemetry.
 
 ## Useful scripts
 
 ```bash
 # Backend
-npm run backend:dev
-npm run backend:build
+dotnet watch --project backend/backend.csproj run
+dotnet build backend/backend.csproj
 
 # Frontend
 npm run frontend:dev
@@ -25,13 +25,13 @@ Sessions must exist in the database before the API can serve them. Use the impor
 
 ```bash
 # From a local export (JSON or gzip/zip)
-bun run import-session -- --file ./session-cache/9693.json.zip
+dotnet run --project backend/backend.csproj -- import-session --file ./session-cache/9693.json.zip
 
 # Directly from openf1.org using the session key
-bun run import-session -- --session 9693
+dotnet run --project backend/backend.csproj -- import-session --session 9693
 
 # Legacy behaviour: pass a path without flags
-bun run import-session -- ./session-cache/9693.json.zip
+dotnet run --project backend/backend.csproj -- import-session ./session-cache/9693.json.zip
 ```
 
 After importing, start the backend and request `/session/<key>`; the API responds with `404` when a session has not been imported.

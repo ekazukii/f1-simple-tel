@@ -1,26 +1,23 @@
 # Backend service image
-FROM node:24-slim AS builder
+FROM mcr.microsoft.com/dotnet/sdk:9.0-bookworm-slim AS builder
 WORKDIR /app
 
-COPY backend/package*.json ./
-RUN npm install
+COPY backend/backend.csproj ./backend/
+RUN dotnet restore ./backend/backend.csproj
 
-COPY backend/tsconfig.json ./
-COPY backend/src ./src
-RUN npm run build
+COPY backend ./backend
+RUN dotnet publish ./backend/backend.csproj -c Release -o /app/publish
 
 ARG DATABASE_URL
 RUN if [ -z "$DATABASE_URL" ]; then echo "DATABASE_URL build arg required to generate assets" && exit 1; fi
 ENV DATABASE_URL=$DATABASE_URL
-RUN node dist/scripts/build-track-heatmaps.js \
-  && node dist/scripts/build-track-speed-maps.js
+RUN dotnet run --project ./backend/backend.csproj -- build-track-heatmaps \
+  && dotnet run --project ./backend/backend.csproj -- build-track-speed-maps
 
-FROM node:24-slim
+FROM mcr.microsoft.com/dotnet/aspnet:9.0-bookworm-slim
 WORKDIR /app
 
-COPY --from=builder /app/package.json /app/package-lock.json ./
-RUN npm install --omit=dev
-COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/publish ./
 COPY --from=builder /app/assets ./assets
 COPY backend/session-cache ./session-cache
 COPY models ./models
@@ -53,4 +50,4 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 ENV PORT=4000
 EXPOSE 4000
-CMD ["node", "dist/server.js"]
+CMD ["dotnet", "backend.dll"]
