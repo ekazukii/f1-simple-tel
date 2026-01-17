@@ -11,14 +11,16 @@ RUN dotnet publish ./backend/backend.csproj -c Release -o /app/publish
 ARG DATABASE_URL
 RUN if [ -z "$DATABASE_URL" ]; then echo "DATABASE_URL build arg required to generate assets" && exit 1; fi
 ENV DATABASE_URL=$DATABASE_URL
-RUN dotnet run --project ./backend/backend.csproj -- build-track-heatmaps \
-  && dotnet run --project ./backend/backend.csproj -- build-track-speed-maps
+WORKDIR /app/backend
+RUN dotnet run --project ./backend.csproj -- build-track-heatmaps \
+  && dotnet run --project ./backend.csproj -- build-track-speed-maps
+WORKDIR /app
 
 FROM mcr.microsoft.com/dotnet/aspnet:9.0-bookworm-slim
 WORKDIR /app
 
 COPY --from=builder /app/publish ./
-COPY --from=builder /app/assets ./assets
+COPY --from=builder /app/backend/assets ./assets
 COPY models ./models
 RUN mkdir -p /app/session-cache
 
